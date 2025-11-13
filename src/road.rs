@@ -95,39 +95,34 @@ pub fn spawn_road_at_positions(
     const INTERSECTION_SNAP_DISTANCE: f32 = 0.1;
     
     // Find or create start intersection
-    let start_id = road_network
+    let start_entity = road_network
         .find_nearest_intersection(start_pos)
-        .filter(|&id| {
-            road_network.intersections[&id]
+        .filter(|&entity| {
+            road_network.intersections[&entity]
                 .position
                 .distance(start_pos) < INTERSECTION_SNAP_DISTANCE
         })
         .unwrap_or_else(|| {
-            let id = road_network.new_intersection_id();
-            let intersection = Intersection::new(id, start_pos, TrafficControlType::None);
+            let intersection = Intersection::new(start_pos, TrafficControlType::None);
             let entity = intersection.spawn(commands, meshes, materials);
-            road_network.add_intersection(id, start_pos, entity, TrafficControlType::None);
-            id
+            road_network.add_intersection(entity, start_pos, TrafficControlType::None);
+            entity
         });
     
     // Find or create end intersection
-    let end_id = road_network
+    let end_entity = road_network
         .find_nearest_intersection(end_pos)
-        .filter(|&id| {
-            road_network.intersections[&id]
+        .filter(|&entity| {
+            road_network.intersections[&entity]
                 .position
                 .distance(end_pos) < INTERSECTION_SNAP_DISTANCE
         })
         .unwrap_or_else(|| {
-            let id = road_network.new_intersection_id();
-            let intersection = Intersection::new(id, end_pos, TrafficControlType::None);
+            let intersection = Intersection::new(end_pos, TrafficControlType::None);
             let entity = intersection.spawn(commands, meshes, materials);
-            road_network.add_intersection(id, end_pos, entity, TrafficControlType::None);
-            id
+            road_network.add_intersection(entity, end_pos, TrafficControlType::None);
+            entity
         });
-    
-    let start_entity = road_network.intersections[&start_id].entity;
-    let end_entity = road_network.intersections[&end_id].entity;
     
     // Create and spawn road
     let road_id = road_network.new_road_id();
@@ -135,7 +130,7 @@ pub fn spawn_road_at_positions(
     let road_entity = road.spawn(commands, meshes, materials, start_pos, end_pos);
     
     // Add to network (no need to pass length/speed_limit, they're in the Road component)
-    road_network.add_road(road_id, road_entity, start_id, end_id);
+    road_network.add_road(road_id, road_entity, start_entity, end_entity);
 }
 
 /// System to spawn roads connecting houses
@@ -155,17 +150,14 @@ pub fn spawn_roads(
 
     // First, create all intersections at house positions
     let mut intersection_entities = Vec::new();
-    let mut intersection_ids = Vec::new();
     
     for position in &house_positions {
-        let id = road_network.new_intersection_id();
-        let intersection = Intersection::new(id, *position, TrafficControlType::StopSign);
+        let intersection = Intersection::new(*position, TrafficControlType::StopSign);
         let entity = intersection.spawn(&mut commands, &mut meshes, &mut materials);
         
-        road_network.add_intersection(id, *position, entity, TrafficControlType::StopSign);
+        road_network.add_intersection(entity, *position, TrafficControlType::StopSign);
         
         intersection_entities.push(entity);
-        intersection_ids.push(id);
     }
 
     // Create road connections between intersections
@@ -181,8 +173,6 @@ pub fn spawn_roads(
         let end_pos = house_positions[end_idx];
         let start_entity = intersection_entities[start_idx];
         let end_entity = intersection_entities[end_idx];
-        let start_id = intersection_ids[start_idx];
-        let end_id = intersection_ids[end_idx];
         
         // Create and spawn road
         let road_id = road_network.new_road_id();
@@ -190,7 +180,7 @@ pub fn spawn_roads(
         let road_entity = road.spawn(&mut commands, &mut meshes, &mut materials, start_pos, end_pos);
         
         // Add to network (no need to pass length/speed_limit, they're in the Road component)
-        road_network.add_road(road_id, road_entity, start_id, end_id);
+        road_network.add_road(road_id, road_entity, start_entity, end_entity);
     }
 }
 

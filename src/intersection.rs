@@ -1,8 +1,8 @@
 use bevy::prelude::*;
 
-/// Unique identifier for intersections
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct IntersectionId(pub u32);
+/// Wrapper type to make it clear this Entity refers to an Intersection
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IntersectionEntity(pub Entity);
 
 /// Types of traffic control at intersections
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,7 +15,6 @@ pub enum TrafficControlType {
 /// Component that marks an entity as an intersection
 #[derive(Component, Debug)]
 pub struct Intersection {
-    pub id: IntersectionId,
     pub position: Vec3,
     pub connected_roads: Vec<Entity>,
     pub traffic_control: TrafficControlType,
@@ -23,9 +22,8 @@ pub struct Intersection {
 
 impl Intersection {
     /// Creates a new intersection at the given position
-    pub fn new(id: IntersectionId, position: Vec3, traffic_control: TrafficControlType) -> Self {
+    pub fn new(position: Vec3, traffic_control: TrafficControlType) -> Self {
         Self {
-            id,
             position,
             connected_roads: Vec::new(),
             traffic_control,
@@ -45,7 +43,6 @@ impl Intersection {
 
         commands.spawn((
             Intersection {
-                id: self.id,
                 position: self.position,
                 connected_roads: Vec::new(),
                 traffic_control: self.traffic_control,
