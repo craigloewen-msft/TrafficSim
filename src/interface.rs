@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use crate::house::spawn_house;
-use crate::road::{spawn_road, RoadNetwork};
+use crate::road::spawn_road_at_positions;
+use crate::road_network::RoadNetwork;
 
 /// Resource to track what the player wants to spawn
 #[derive(Resource, Default, PartialEq, Clone)]
@@ -250,7 +251,7 @@ pub fn handle_world_clicks(
         SpawnMode::Road => {
             if let Some(first_point) = road_state.first_point {
                 // We have a first point, so spawn the road
-                spawn_road(
+                spawn_road_at_positions(
                     &mut commands,
                     &mut meshes,
                     &mut materials,

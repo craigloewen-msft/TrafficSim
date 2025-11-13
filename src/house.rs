@@ -57,18 +57,18 @@ pub fn spawn_houses(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Spawn a couple of sample houses (smaller size)
-    let house_positions = vec![
-        Vec3::new(-8.0, 0.5, -8.0),
-        Vec3::new(8.0, 0.5, -8.0),
-        Vec3::new(-8.0, 0.5, 8.0),
-        Vec3::new(8.0, 0.5, 8.0),
-    ];
+    // // Spawn a couple of sample houses (smaller size)
+    // let house_positions = vec![
+    //     Vec3::new(-8.0, 0.5, -8.0),
+    //     Vec3::new(8.0, 0.5, -8.0),
+    //     Vec3::new(-8.0, 0.5, 8.0),
+    //     Vec3::new(8.0, 0.5, 8.0),
+    // ];
 
-    for position in house_positions {
-        let house = House::new(2);
-        house.spawn(&mut commands, &mut meshes, &mut materials, position);
-    }
+    // for position in house_positions {
+    //     let house = House::new(2);
+    //     house.spawn(&mut commands, &mut meshes, &mut materials, position);
+    // }
 }
 
 /// Helper function to spawn a house at a given position

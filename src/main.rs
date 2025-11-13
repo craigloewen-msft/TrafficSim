@@ -1,10 +1,13 @@
 mod car;
 mod house;
 mod interface;
+mod intersection;
 mod road;
+mod road_network;
 mod world;
 
 use bevy::prelude::*;
+use bevy::log::LogPlugin;
 use car::CarPlugin;
 use house::HousePlugin;
 use interface::InterfacePlugin;
@@ -13,14 +16,22 @@ use world::WorldPlugin;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "Traffic Sim - Bevy Game".into(),
-                resolution: (1280, 720).into(),
-                ..default()
-            }),
-            ..default()
-        }))
+        .add_plugins(
+            DefaultPlugins
+                .set(LogPlugin {
+                    filter: "warn,traffic_sim=debug".to_string(),
+                    level: bevy::log::Level::DEBUG,
+                    ..default()
+                })
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Traffic Sim - Bevy Game".into(),
+                        resolution: (1280, 720).into(),
+                        ..default()
+                    }),
+                    ..default()
+                }),
+        )
         // Add our custom plugins for each game concept
         .add_plugins((WorldPlugin, RoadPlugin, CarPlugin, HousePlugin, InterfacePlugin))
         .add_systems(Update, handle_input)
