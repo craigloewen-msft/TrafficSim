@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use crate::house::spawn_house;
+use crate::intersection::Intersection;
 use crate::road::spawn_road_at_positions;
 use crate::road_network::RoadNetwork;
 
@@ -194,7 +195,7 @@ pub fn update_button_colors(
 }
 
 /// System to handle mouse clicks and spawn entities
-pub fn handle_world_clicks(
+fn handle_mouse_click(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -204,6 +205,7 @@ pub fn handle_world_clicks(
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
+    intersection_query: Query<&Intersection>,
 ) {
     if !mouse_button.just_pressed(MouseButton::Left) {
         return;
@@ -256,6 +258,7 @@ pub fn handle_world_clicks(
                     &mut meshes,
                     &mut materials,
                     &mut road_network,
+                    &intersection_query,
                     first_point,
                     spawn_position,
                 );
@@ -282,7 +285,7 @@ impl Plugin for InterfacePlugin {
                 (
                     handle_button_interaction,
                     update_button_colors,
-                    handle_world_clicks,
+                    handle_mouse_click,
                 ),
             );
     }

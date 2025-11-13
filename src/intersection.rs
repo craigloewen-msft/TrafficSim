@@ -1,7 +1,9 @@
 use bevy::prelude::*;
 
+use crate::road::RoadEntity;
+
 /// Wrapper type to make it clear this Entity refers to an Intersection
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntersectionEntity(pub Entity);
 
 /// Types of traffic control at intersections
@@ -16,7 +18,6 @@ pub enum TrafficControlType {
 #[derive(Component, Debug)]
 pub struct Intersection {
     pub position: Vec3,
-    pub connected_roads: Vec<Entity>,
     pub traffic_control: TrafficControlType,
 }
 
@@ -25,7 +26,6 @@ impl Intersection {
     pub fn new(position: Vec3, traffic_control: TrafficControlType) -> Self {
         Self {
             position,
-            connected_roads: Vec::new(),
             traffic_control,
         }
     }
@@ -44,7 +44,6 @@ impl Intersection {
         commands.spawn((
             Intersection {
                 position: self.position,
-                connected_roads: Vec::new(),
                 traffic_control: self.traffic_control,
             },
             Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
