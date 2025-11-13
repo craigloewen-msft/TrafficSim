@@ -14,6 +14,34 @@ impl Default for House {
     }
 }
 
+impl House {
+    /// Creates a new house with the specified number of occupants
+    pub fn new(occupants: u32) -> Self {
+        Self { occupants }
+    }
+
+    /// Spawns the house entity with all necessary components
+    pub fn spawn(
+        &self,
+        commands: &mut Commands,
+        meshes: &mut ResMut<Assets<Mesh>>,
+        materials: &mut ResMut<Assets<StandardMaterial>>,
+        position: Vec3,
+    ) {
+        const HOUSE_SIZE: f32 = 1.0;
+        let house_color = Color::srgb(0.7, 0.6, 0.4);
+
+        commands.spawn(HouseBundle {
+            house: House {
+                occupants: self.occupants,
+            },
+            mesh: Mesh3d(meshes.add(Cuboid::new(HOUSE_SIZE, HOUSE_SIZE, HOUSE_SIZE))),
+            material: MeshMaterial3d(materials.add(house_color)),
+            transform: Transform::from_translation(position),
+        });
+    }
+}
+
 /// Bundle for spawning a house with all necessary components
 #[derive(Bundle)]
 pub struct HouseBundle {
@@ -29,21 +57,29 @@ pub fn spawn_houses(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Spawn a couple of sample houses
+    // Spawn a couple of sample houses (smaller size)
     let house_positions = vec![
-        Vec3::new(-5.0, 1.0, -5.0),
-        Vec3::new(5.0, 1.0, -5.0),
-        Vec3::new(-5.0, 1.0, 5.0),
+        Vec3::new(-8.0, 0.5, -8.0),
+        Vec3::new(8.0, 0.5, -8.0),
+        Vec3::new(-8.0, 0.5, 8.0),
+        Vec3::new(8.0, 0.5, 8.0),
     ];
 
     for position in house_positions {
-        commands.spawn(HouseBundle {
-            house: House { occupants: 2 },
-            mesh: Mesh3d(meshes.add(Cuboid::new(2.0, 2.0, 2.0))),
-            material: MeshMaterial3d(materials.add(Color::srgb(0.7, 0.6, 0.4))),
-            transform: Transform::from_translation(position),
-        });
+        let house = House::new(2);
+        house.spawn(&mut commands, &mut meshes, &mut materials, position);
     }
+}
+
+/// Helper function to spawn a house at a given position
+pub fn spawn_house(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    position: Vec3,
+) {
+    let house = House::new(2);
+    house.spawn(commands, meshes, materials, position);
 }
 
 /// System to update house logic (placeholder for now)

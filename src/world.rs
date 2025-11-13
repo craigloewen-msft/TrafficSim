@@ -10,10 +10,10 @@ pub fn setup_world(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    // Spawn a 3D camera
+    // Spawn a 3D camera with top-down view
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 10.0, 15.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Transform::from_xyz(0.0, 25.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
     ));
 
     // Spawn a directional light

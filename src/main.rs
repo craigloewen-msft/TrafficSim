@@ -1,10 +1,14 @@
 mod car;
 mod house;
+mod interface;
+mod road;
 mod world;
 
 use bevy::prelude::*;
 use car::CarPlugin;
 use house::HousePlugin;
+use interface::InterfacePlugin;
+use road::RoadPlugin;
 use world::WorldPlugin;
 
 fn main() {
@@ -18,7 +22,7 @@ fn main() {
             ..default()
         }))
         // Add our custom plugins for each game concept
-        .add_plugins((WorldPlugin, CarPlugin, HousePlugin))
+        .add_plugins((WorldPlugin, RoadPlugin, CarPlugin, HousePlugin, InterfacePlugin))
         .add_systems(Update, handle_input)
         .run();
 }
