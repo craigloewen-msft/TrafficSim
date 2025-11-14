@@ -1,21 +1,20 @@
 use crate::intersection::{Intersection, IntersectionEntity};
-use crate::road::{Road, RoadEntity};
+use crate::road::Road;
 use crate::road_network::RoadNetwork;
 use bevy::log::{info, warn};
 use bevy::prelude::*;
 use rand::seq::{IndexedRandom, IteratorRandom};
-use std::collections::HashSet;
 
 /// Component that marks an entity as a car
 #[derive(Component)]
 pub struct Car {
     pub speed: f32,
     pub max_speed: f32,
-    pub current_road_entity: Option<RoadEntity>, // The road entity the car is currently on
-    pub progress: f32,                           // 0.0 to 1.0 along the current road
-    pub start_intersection_entity: Option<IntersectionEntity>, // The intersection where we started on this road
-    pub target_intersection_entity: Option<IntersectionEntity>, // The intersection we're traveling toward
-    pub final_target_intersection_entity: Option<IntersectionEntity>, // The final destination intersection
+    pub current_road_entity: Option<Entity>, // The road entity the car is currently on
+    pub progress: f32,                       // 0.0 to 1.0 along the current road
+    pub start_intersection: Option<Entity>,  // The intersection where we started on this road
+    pub target_intersection: Option<Entity>, // The intersection we're traveling toward
+    pub final_target_intersection: Option<Entity>, // The final destination intersection
     pub path: Vec<IntersectionEntity>, // Path of intersection entities to follow to reach the final destination
 }
 
@@ -26,9 +25,9 @@ impl Default for Car {
             max_speed: 5.0,
             current_road_entity: None,
             progress: 0.0,
-            start_intersection_entity: None,
-            target_intersection_entity: None,
-            final_target_intersection_entity: None,
+            start_intersection: None,
+            target_intersection: None,
+            final_target_intersection: None,
             path: Vec::new(),
         }
     }
@@ -49,35 +48,26 @@ pub fn spawn_cars(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     road_network: Res<RoadNetwork>,
-    road_query: Query<&Road>,
+    road_query: Query<(Entity, &Road)>,
     intersection_query: Query<&Intersection>,
 ) {
     info!("=== SPAWNING CARS ===");
-    
+
     let num_cars_to_spawn = 1;
     let mut rng = rand::rng();
 
-    // Collect all road entities from the adjacency graph
-    let road_entities: Vec<RoadEntity> = road_network
-        .adjacency
-        .values()
-        .flat_map(|connections| connections.iter().map(|(road_entity, _)| *road_entity))
-        .collect::<HashSet<_>>() // Remove duplicates
-        .into_iter()
-        .collect();
-        
+    // Collect road entities from the road query
+    let road_entities: Vec<Entity> = road_query.iter().map(|(entity, _)| entity).collect();
     if road_entities.is_empty() {
         warn!("No roads available in road network!");
         return;
     }
-    
-    info!("Road network contains {} roads", road_entities.len());
 
-    // Collect all intersection entities
-    let all_intersections: Vec<IntersectionEntity> = road_network
+    // Collect all intersection entities from the adjacency graph
+    let all_intersections: Vec<Entity> = road_network
         .adjacency
         .keys()
-        .copied()
+        .map(|intersection_entity| intersection_entity.0)
         .collect();
 
     if all_intersections.len() < 2 {
@@ -92,35 +82,38 @@ pub fn spawn_cars(
             continue;
         };
 
-        if let Ok(road) = road_query.get(road_entity.0) {
+        if let Ok((_, road)) = road_query.get(road_entity) {
             // Get the start intersection position
             if let Ok(start_intersection) = intersection_query.get(road.start_intersection_entity.0) {
                 let spawn_pos = start_intersection.position + Vec3::new(0.0, 0.3, 0.0);
                 info!("Spawning car at position: {:.2?}", spawn_pos);
 
                 // Choose a random final destination intersection (different from start)
-                let start_intersection_entity = road.start_intersection_entity;
+                let start_entity = road.start_intersection_entity.0;
 
                 let final_destination = all_intersections
                     .iter()
-                    .filter(|&&intersection_entity| intersection_entity != start_intersection_entity)
+                    .filter(|&&entity| entity != start_entity)
                     .choose(&mut rng);
 
                 // Set up the final destination and compute path
                 let (final_target_entity, path) = match final_destination {
-                    Some(&intersection_entity) => {
-                        if let Ok(destination_intersection) = intersection_query.get(intersection_entity.0) {
+                    Some(&entity) => {
+                        if let Ok(destination_intersection) = intersection_query.get(entity) {
                             info!(
                                 "Car final destination: intersection at position {:.2?}",
                                 destination_intersection.position
                             );
 
-                            let path = road_network.find_path(start_intersection_entity, intersection_entity).unwrap_or_else(|| {
+                            let path = road_network.find_path(
+                                crate::intersection::IntersectionEntity(start_entity),
+                                crate::intersection::IntersectionEntity(entity)
+                            ).unwrap_or_else(|| {
                                 warn!("No path found from start to destination");
                                 Vec::new()
                             });
 
-                            (Some(intersection_entity), path)
+                            (Some(entity), path)
                         } else {
                             warn!("Could not query destination intersection!");
                             (None, Vec::new())
@@ -136,9 +129,9 @@ pub fn spawn_cars(
                     car: Car {
                         current_road_entity: Some(road_entity),
                         progress: 0.0,
-                        start_intersection_entity: Some(road.start_intersection_entity),
-                        target_intersection_entity: Some(road.end_intersection_entity),
-                        final_target_intersection_entity: final_target_entity,
+                        start_intersection: Some(road.start_intersection_entity.0),
+                        target_intersection: Some(road.end_intersection_entity.0),
+                        final_target_intersection: final_target_entity,
                         path,
                         ..default()
                     },
@@ -152,7 +145,7 @@ pub fn spawn_cars(
             } else {
                 warn!(
                     "Failed to get start intersection {:?}",
-                    road.start_intersection_entity
+                    road.start_intersection_entity.0
                 );
             }
         } else {
@@ -165,7 +158,7 @@ pub fn spawn_cars(
 pub fn update_cars(
     time: Res<Time>,
     road_network: Res<RoadNetwork>,
-    road_query: Query<&Road>,
+    road_query: Query<(Entity, &Road)>,
     intersection_query: Query<&Intersection>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
 ) {
@@ -174,8 +167,8 @@ pub fn update_cars(
         //        entity, car.progress, car.speed, transform.translation);
 
         // Check if we've reached the final destination
-        if let Some(final_target_entity) = car.final_target_intersection_entity {
-            if let Some(target_entity) = car.target_intersection_entity {
+        if let Some(final_target_entity) = car.final_target_intersection {
+            if let Some(target_entity) = car.target_intersection {
                 if target_entity == final_target_entity && car.progress >= 1.0 {
                     // Stop the car - just continue to the next iteration
                     continue;
@@ -189,7 +182,7 @@ pub fn update_cars(
             continue;
         };
 
-        let Ok(_road) = road_query.get(current_road_entity.0) else {
+        let Ok(_road) = road_query.get(current_road_entity) else {
             warn!(
                 "Car {:?} road entity {:?} not found!",
                 entity, current_road_entity
@@ -198,23 +191,23 @@ pub fn update_cars(
         };
 
         // Get start and end intersection positions based on car's travel direction
-        let Some(start_entity) = car.start_intersection_entity else {
+        let Some(start_entity) = car.start_intersection else {
             warn!("Car {:?} has no start intersection!", entity);
             continue;
         };
-        let Some(target_entity) = car.target_intersection_entity else {
+        let Some(target_entity) = car.target_intersection else {
             warn!("Car {:?} has no target intersection!", entity);
             continue;
         };
 
-        let Ok(start_intersection) = intersection_query.get(start_entity.0) else {
+        let Ok(start_intersection) = intersection_query.get(start_entity) else {
             warn!(
                 "Car {:?} start intersection {:?} not found!",
                 entity, start_entity
             );
             continue;
         };
-        let Ok(target_intersection) = intersection_query.get(target_entity.0) else {
+        let Ok(target_intersection) = intersection_query.get(target_entity) else {
             warn!(
                 "Car {:?} target intersection {:?} not found!",
                 entity, target_entity
@@ -243,7 +236,7 @@ pub fn update_cars(
         if car.progress >= 1.0 {
             // We've reached the target intersection
             // Check if this is our final destination
-            if Some(target_entity) == car.final_target_intersection_entity {
+            if Some(target_entity) == car.final_target_intersection {
                 info!(
                     "Car {:?} reached final destination at intersection",
                     entity
@@ -266,7 +259,10 @@ pub fn update_cars(
             let next_intersection_entity = car.path.remove(0);
             
             // Find the road that connects current intersection to next intersection
-            let Some(next_road_entity) = road_network.find_road_between(target_entity, next_intersection_entity) else {
+            let Some(next_road_entity) = road_network.find_road_between(
+                crate::intersection::IntersectionEntity(target_entity),
+                next_intersection_entity
+            ) else {
                 error!(
                     "Car {:?}: no road found between current intersection and next intersection!",
                     entity
@@ -274,21 +270,21 @@ pub fn update_cars(
                 continue;
             };
             
-            car.current_road_entity = Some(next_road_entity);
+            car.current_road_entity = Some(next_road_entity.0);
             car.progress = 0.0;
 
             // Determine which end of the new road we're at and set our direction
-            if let Ok(new_road) = road_query.get(next_road_entity.0) {
+            if let Ok((_, new_road)) = road_query.get(next_road_entity.0) {
                 // Figure out which direction to travel on the new road
-                if new_road.start_intersection_entity == target_entity {
+                if new_road.start_intersection_entity.0 == target_entity {
                     // We're at the start, so travel toward the end
-                    car.start_intersection_entity = Some(new_road.start_intersection_entity);
-                    car.target_intersection_entity = Some(new_road.end_intersection_entity);
+                    car.start_intersection = Some(new_road.start_intersection_entity.0);
+                    car.target_intersection = Some(new_road.end_intersection_entity.0);
                     transform.rotation = Quat::from_rotation_y(new_road.angle);
-                } else if new_road.end_intersection_entity == target_entity {
+                } else if new_road.end_intersection_entity.0 == target_entity {
                     // We're at the end, so travel toward the start
-                    car.start_intersection_entity = Some(new_road.end_intersection_entity);
-                    car.target_intersection_entity = Some(new_road.start_intersection_entity);
+                    car.start_intersection = Some(new_road.end_intersection_entity.0);
+                    car.target_intersection = Some(new_road.start_intersection_entity.0);
                     // Rotate 180 degrees to face the opposite direction
                     transform.rotation =
                         Quat::from_rotation_y(new_road.angle + std::f32::consts::PI);
@@ -297,8 +293,8 @@ pub fn update_cars(
                         "Car {:?}: new road doesn't connect to current intersection!",
                         entity
                     );
-                    car.start_intersection_entity = Some(new_road.start_intersection_entity);
-                    car.target_intersection_entity = Some(new_road.end_intersection_entity);
+                    car.start_intersection = Some(new_road.start_intersection_entity.0);
+                    car.target_intersection = Some(new_road.end_intersection_entity.0);
                 }
             } else {
                 error!("Car {:?}: failed to query next road from path!", entity);
