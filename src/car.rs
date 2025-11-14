@@ -2,7 +2,7 @@ use crate::intersection::{Intersection, IntersectionEntity};
 use crate::road::{Road, RoadEntity};
 use crate::road_network::RoadNetwork;
 use anyhow::{Context, Result};
-use bevy::log::{info, warn, error};
+use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use rand::seq::{IndexedRandom, IteratorRandom};
 
@@ -90,6 +90,13 @@ fn try_spawn_car(
         )
         .context("No path found from start to destination")?;
 
+    let path_positions = path.iter().map(|intersection_entity| {
+        intersection_query
+            .get(intersection_entity.0)
+            .map(|intersection| intersection.position)
+            .unwrap_or(Vec3::ZERO)
+    }).collect::<Vec<Vec3>>();
+
     commands.spawn(CarBundle {
         car: Car::new(
             RoadEntity(road_entity),
@@ -104,7 +111,8 @@ fn try_spawn_car(
             .with_rotation(Quat::from_rotation_y(road.angle)),
     });
 
-    info!("✓ Car spawned successfully!");
+    info!("✓ Car spawned successfully with path: {:?}!", path_positions);
+
     Ok(())
 }
 
@@ -154,7 +162,7 @@ pub fn spawn_cars(
         };
 
         let start_entity = road.start_intersection_entity.0;
-        
+
         let Some(&final_target_entity) = all_intersections
             .iter()
             .filter(|&&entity| entity != start_entity)
@@ -204,7 +212,7 @@ fn try_update_car(
     let start_intersection = intersection_query
         .get(car.start_intersection.0)
         .context("Start intersection not found")?;
-    
+
     let target_intersection = intersection_query
         .get(car.target_intersection.0)
         .context("Target intersection not found")?;
@@ -265,6 +273,13 @@ fn try_update_car(
         } else {
             anyhow::bail!("New road doesn't connect to current intersection");
         }
+
+        let new_target_position = intersection_query
+            .get(car.target_intersection.0)
+            .context("Failed to get new target intersection")?
+            .position;
+
+        info!("Car moving to new position: {:.2?}", new_target_position);
     } else {
         // Interpolate position along current road
         transform.translation = start_pos.lerp(end_pos, car.progress);
