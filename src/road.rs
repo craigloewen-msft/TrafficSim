@@ -4,6 +4,9 @@ use anyhow::Result;
 use crate::intersection::{Intersection, IntersectionEntity, TrafficControlType};
 use crate::road_network::RoadNetwork;
 
+// Import the spawn helper function
+use crate::intersection::spawn_intersection;
+
 /// Wrapper type for road entities to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RoadEntity(pub Entity);
@@ -19,73 +22,61 @@ pub struct Road {
 }
 
 impl Road {
-    /// Creates a new road segment between two intersections
-    pub fn new(
-        start_intersection_entity: IntersectionEntity,
-        end_intersection_entity: IntersectionEntity,
-        start_pos: Vec3,
-        end_pos: Vec3,
-    ) -> Self {
-        // Calculate angle from positions
-        let direction = (end_pos - start_pos).normalize();
-        let angle = direction.x.atan2(direction.z);
+}
 
-        Self {
-            start_intersection_entity,
-            end_intersection_entity,
-            lane_count: 2,     // Default 2 lanes
-            speed_limit: 13.4, // Default ~30 mph in m/s
-            angle,
-        }
-    }
+/// Helper function to spawn a new road entity with all necessary components
+fn spawn_road(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    start_intersection_entity: IntersectionEntity,
+    end_intersection_entity: IntersectionEntity,
+    start_pos: Vec3,
+    end_pos: Vec3,
+    road_network: &mut ResMut<RoadNetwork>,
+) -> Result<RoadEntity> {
+    const ROAD_WIDTH: f32 = 0.4;
+    const ROAD_HEIGHT: f32 = 0.02;
+    let road_color = Color::srgb(0.2, 0.2, 0.2);
 
-    /// Spawns the road entity with all necessary components
-    pub fn spawn(
-        &self,
-        commands: &mut Commands,
-        meshes: &mut ResMut<Assets<Mesh>>,
-        materials: &mut ResMut<Assets<StandardMaterial>>,
-        start_pos: Vec3,
-        end_pos: Vec3,
-        road_network: &mut ResMut<RoadNetwork>,
-    ) -> Entity {
-        const ROAD_WIDTH: f32 = 0.4;
-        const ROAD_HEIGHT: f32 = 0.02;
-        let road_color = Color::srgb(0.2, 0.2, 0.2);
+    // Calculate angle from positions
+    let direction = (end_pos - start_pos).normalize();
+    let angle = direction.x.atan2(direction.z);
 
-        // Calculate road properties
-        let length = start_pos.distance(end_pos);
-        let midpoint = (start_pos + end_pos) / 2.0;
+    // Calculate road properties
+    let length = start_pos.distance(end_pos);
+    let midpoint = (start_pos + end_pos) / 2.0;
 
-        // Use the pre-calculated angle for rotation
-        let rotation = Quat::from_rotation_y(self.angle);
+    // Use the calculated angle for rotation
+    let rotation = Quat::from_rotation_y(angle);
 
-        // Spawn road segment
-        let road_entity = commands
-            .spawn((
-                Road {
-                    start_intersection_entity: self.start_intersection_entity,
-                    end_intersection_entity: self.end_intersection_entity,
-                    lane_count: self.lane_count,
-                    speed_limit: self.speed_limit,
-                    angle: self.angle,
-                },
-                Mesh3d(meshes.add(Cuboid::new(ROAD_WIDTH, ROAD_HEIGHT, length))),
-                MeshMaterial3d(materials.add(road_color)),
-                Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
-                    .with_rotation(rotation),
-            ))
-            .id();
+    // Spawn road segment
+    let road_entity = commands
+        .spawn((
+            Road {
+                start_intersection_entity,
+                end_intersection_entity,
+                lane_count: 2,     // Default 2 lanes
+                speed_limit: 13.4, // Default ~30 mph in m/s
+                angle,
+            },
+            Mesh3d(meshes.add(Cuboid::new(ROAD_WIDTH, ROAD_HEIGHT, length))),
+            MeshMaterial3d(materials.add(road_color)),
+            Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
+                .with_rotation(rotation),
+        ))
+        .id();
 
-        // Add to network
-        road_network.add_road(
-            RoadEntity(road_entity),
-            self.start_intersection_entity,
-            self.end_intersection_entity,
-        );
+    let road_entity_wrapper = RoadEntity(road_entity);
 
-        road_entity
-    }
+    // Add to network
+    road_network.add_road(
+        road_entity_wrapper,
+        start_intersection_entity,
+        end_intersection_entity,
+    );
+
+    Ok(road_entity_wrapper)
 }
 
 /// Helper function to spawn a road between two positions
@@ -114,8 +105,7 @@ pub fn spawn_road_at_positions(
                 .map(|intersection| (intersection_entity, intersection.position))
         })
         .unwrap_or_else(|| {
-            let intersection = Intersection::new(start_pos, TrafficControlType::None);
-            let entity = intersection.spawn(commands, meshes, materials);
+            let entity = spawn_intersection(commands, meshes, materials, start_pos, TrafficControlType::None);
             let intersection_entity = IntersectionEntity(entity);
             road_network.add_intersection(intersection_entity);
             (intersection_entity, start_pos)
@@ -134,30 +124,25 @@ pub fn spawn_road_at_positions(
                 .map(|intersection| (intersection_entity, intersection.position))
         })
         .unwrap_or_else(|| {
-            let intersection = Intersection::new(end_pos, TrafficControlType::None);
-            let entity = intersection.spawn(commands, meshes, materials);
+            let entity = spawn_intersection(commands, meshes, materials, end_pos, TrafficControlType::None);
             let intersection_entity = IntersectionEntity(entity);
             road_network.add_intersection(intersection_entity);
             (intersection_entity, end_pos)
         });
 
     // Create and spawn road using positions directly
-    let road = Road::new(
+    let road_entity = spawn_road(
+        commands,
+        meshes,
+        materials,
         start_intersection_entity,
         end_intersection_entity,
         start_intersection_pos,
         end_intersection_pos,
-    );
-    let road_entity = road.spawn(
-        commands,
-        meshes,
-        materials,
-        start_intersection_pos,
-        end_intersection_pos,
         road_network,
-    );
+    )?;
     
-    Ok(road_entity)
+    Ok(road_entity.0)
 }
 
 /// System to spawn roads connecting houses
@@ -180,8 +165,7 @@ pub fn spawn_roads(
     let mut intersection_entities = Vec::new();
 
     for position in &house_positions {
-        let intersection = Intersection::new(*position, TrafficControlType::StopSign);
-        let entity = intersection.spawn(&mut commands, &mut meshes, &mut materials);
+        let entity = spawn_intersection(&mut commands, &mut meshes, &mut materials, *position, TrafficControlType::StopSign);
         let intersection_entity = IntersectionEntity(entity);
 
         road_network.add_intersection(intersection_entity);
@@ -205,20 +189,18 @@ pub fn spawn_roads(
         let end_intersection_entity = intersection_entities[end_idx];
 
         // Create and spawn road using positions directly (intersections not queryable yet)
-        let road = Road::new(
+        if let Err(e) = spawn_road(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
             start_intersection_entity,
             end_intersection_entity,
             start_pos,
             end_pos,
-        );
-        road.spawn(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            start_pos,
-            end_pos,
             &mut road_network,
-        );
+        ) {
+            bevy::log::error!("Failed to spawn road: {:#}", e);
+        }
     }
 }
 

@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-use crate::road::RoadEntity;
-
 /// Wrapper type to make it clear this Entity refers to an Intersection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntersectionEntity(pub Entity);
@@ -29,32 +27,33 @@ impl Intersection {
             traffic_control,
         }
     }
+}
 
-    /// Spawns the intersection entity with visual representation
-    pub fn spawn(
-        &self,
-        commands: &mut Commands,
-        meshes: &mut ResMut<Assets<Mesh>>,
-        materials: &mut ResMut<Assets<StandardMaterial>>,
-    ) -> Entity {
-        const INTERSECTION_SIZE: f32 = 0.6;
-        const INTERSECTION_HEIGHT: f32 = 0.03;
-        let intersection_color = Color::srgb(0.3, 0.3, 0.3);
+/// Helper function to spawn an intersection entity with visual representation
+pub fn spawn_intersection(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    position: Vec3,
+    traffic_control: TrafficControlType,
+) -> Entity {
+    const INTERSECTION_SIZE: f32 = 0.6;
+    const INTERSECTION_HEIGHT: f32 = 0.03;
+    let intersection_color = Color::srgb(0.3, 0.3, 0.3);
 
-        commands.spawn((
-            Intersection {
-                position: self.position,
-                traffic_control: self.traffic_control,
-            },
-            Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
-            MeshMaterial3d(materials.add(intersection_color)),
-            Transform::from_translation(Vec3::new(
-                self.position.x,
-                INTERSECTION_HEIGHT / 2.0,
-                self.position.z,
-            )),
-        )).id()
-    }
+    commands.spawn((
+        Intersection {
+            position,
+            traffic_control,
+        },
+        Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
+        MeshMaterial3d(materials.add(intersection_color)),
+        Transform::from_translation(Vec3::new(
+            position.x,
+            INTERSECTION_HEIGHT / 2.0,
+            position.z,
+        )),
+    )).id()
 }
 
 /// Data stored in the road network for pathfinding
