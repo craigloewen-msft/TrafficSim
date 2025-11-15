@@ -14,9 +14,7 @@ pub struct Car {
     pub current_road_entity: RoadEntity, // The road entity the car is currently on
     pub progress: f32,                   // 0.0 to 1.0 along the current road
     pub start_intersection: IntersectionEntity, // The intersection where we started on this road
-    pub target_intersection: IntersectionEntity, // The intersection we're traveling toward
-    pub final_target_intersection: IntersectionEntity, // The final destination intersection
-    pub path: Vec<IntersectionEntity>, // Path of intersection entities to follow to reach the final destination
+    pub path: Vec<IntersectionEntity>, // Path of intersection entities to follow (first element is next target)
 }
 
 impl Car {
@@ -24,8 +22,6 @@ impl Car {
     pub fn new(
         current_road_entity: RoadEntity,
         start_intersection: IntersectionEntity,
-        target_intersection: IntersectionEntity,
-        final_target_intersection: IntersectionEntity,
         path: Vec<IntersectionEntity>,
     ) -> Self {
         Self {
@@ -34,8 +30,6 @@ impl Car {
             current_road_entity,
             progress: 0.0,
             start_intersection,
-            target_intersection,
-            final_target_intersection,
             path,
         }
     }
@@ -90,19 +84,20 @@ fn try_spawn_car(
         )
         .context("No path found from start to destination")?;
 
-    let path_positions = path.iter().map(|intersection_entity| {
-        intersection_query
-            .get(intersection_entity.0)
-            .map(|intersection| intersection.position)
-            .unwrap_or(Vec3::ZERO)
-    }).collect::<Vec<Vec3>>();
+    let path_positions = path
+        .iter()
+        .map(|intersection_entity| {
+            intersection_query
+                .get(intersection_entity.0)
+                .map(|intersection| intersection.position)
+                .unwrap_or(Vec3::ZERO)
+        })
+        .collect::<Vec<Vec3>>();
 
     commands.spawn(CarBundle {
         car: Car::new(
             RoadEntity(road_entity),
             road.start_intersection_entity,
-            road.end_intersection_entity,
-            IntersectionEntity(final_target_entity),
             path,
         ),
         mesh: Mesh3d(meshes.add(Cuboid::new(0.3, 0.2, 0.5))),
@@ -111,7 +106,10 @@ fn try_spawn_car(
             .with_rotation(Quat::from_rotation_y(road.angle)),
     });
 
-    info!("✓ Car spawned successfully with path: {:?}!", path_positions);
+    info!(
+        "✓ Car spawned successfully with path: {:?}!",
+        path_positions
+    );
 
     Ok(())
 }
@@ -150,27 +148,11 @@ pub fn spawn_cars(
     }
 
     for _ in 0..num_cars_to_spawn {
-        // Choose a random road and destination
-        let Some(&road_entity) = road_entities.choose(&mut rng) else {
-            warn!("Failed to choose random road!");
-            continue;
-        };
+        // Choose the first intersection from the list
+        let road_entity = *road_entities.last().unwrap();
 
-        let Ok((_, road)) = road_query.get(road_entity) else {
-            warn!("Failed to query road entity");
-            continue;
-        };
-
-        let start_entity = road.start_intersection_entity.0;
-
-        let Some(&final_target_entity) = all_intersections
-            .iter()
-            .filter(|&&entity| entity != start_entity)
-            .choose(&mut rng)
-        else {
-            warn!("Could not find valid final destination!");
-            continue;
-        };
+        // Get 2nd intersection
+        let final_target_entity = *all_intersections.last().unwrap();
 
         // Try to spawn the car, log error if it fails
         if let Err(e) = try_spawn_car(
@@ -190,6 +172,7 @@ pub fn spawn_cars(
 
 /// Helper function to update a single car with proper error handling
 fn try_update_car(
+    commands: &mut Commands,
     car_entity: Entity,
     car: &mut Car,
     transform: &mut Transform,
@@ -199,8 +182,10 @@ fn try_update_car(
     intersection_query: &Query<&Intersection>,
 ) -> Result<()> {
     // Check if we've reached the final destination
-    if car.target_intersection.0 == car.final_target_intersection.0 && car.progress >= 1.0 {
-        return Ok(()); // Car has stopped at destination
+    if car.path.is_empty() {
+        error!("Car {:?} has no path", car_entity);
+        commands.entity(car_entity).despawn();
+        return Ok(());
     }
 
     // Get the current road
@@ -208,13 +193,19 @@ fn try_update_car(
         .get(car.current_road_entity.0)
         .context("Road entity not found")?;
 
+    // Get the target intersection (first item in path)
+    let target_intersection_entity = car
+        .path
+        .first()
+        .context("Path is empty, no target intersection")?;
+
     // Get start and end intersection positions
     let start_intersection = intersection_query
         .get(car.start_intersection.0)
         .context("Start intersection not found")?;
 
     let target_intersection = intersection_query
-        .get(car.target_intersection.0)
+        .get(target_intersection_entity.0)
         .context("Target intersection not found")?;
 
     let start_pos = start_intersection.position;
@@ -232,24 +223,25 @@ fn try_update_car(
 
     // Check if we've reached the end of the current road
     if car.progress >= 1.0 {
-        // We've reached the target intersection
-        if car.target_intersection.0 == car.final_target_intersection.0 {
+        // Remove the intersection we just reached from the path
+        let reached_intersection = car.path.remove(0);
+
+        if car.path.is_empty() {
             info!("Car {:?} reached final destination", car_entity);
             car.progress = 1.0;
             transform.translation = end_pos;
+
+            // Despawn car
+            commands.entity(car_entity).despawn();
             return Ok(());
         }
 
-        // Get next intersection from path
-        if car.path.is_empty() {
-            anyhow::bail!("No path available to continue");
-        }
-
-        let next_intersection_entity = car.path.remove(0);
+        // Get next intersection from path (peek at the next target)
+        let next_intersection_entity = *car.path.first().context("No next intersection in path")?;
 
         // Find the road connecting to next intersection
         let next_road_entity = road_network
-            .find_road_between(car.target_intersection, next_intersection_entity)
+            .find_road_between(reached_intersection, next_intersection_entity)
             .context("No road found between current and next intersection")?;
 
         car.current_road_entity = next_road_entity;
@@ -260,22 +252,20 @@ fn try_update_car(
             .get(next_road_entity.0)
             .context("Failed to query next road")?;
 
-        if new_road.start_intersection_entity == car.target_intersection {
+        if new_road.start_intersection_entity == reached_intersection {
             // Travel from start to end
             car.start_intersection = new_road.start_intersection_entity;
-            car.target_intersection = new_road.end_intersection_entity;
             transform.rotation = Quat::from_rotation_y(new_road.angle);
-        } else if new_road.end_intersection_entity == car.target_intersection {
+        } else if new_road.end_intersection_entity == reached_intersection {
             // Travel from end to start
             car.start_intersection = new_road.end_intersection_entity;
-            car.target_intersection = new_road.start_intersection_entity;
             transform.rotation = Quat::from_rotation_y(new_road.angle + std::f32::consts::PI);
         } else {
             anyhow::bail!("New road doesn't connect to current intersection");
         }
 
         let new_target_position = intersection_query
-            .get(car.target_intersection.0)
+            .get(next_intersection_entity.0)
             .context("Failed to get new target intersection")?
             .position;
 
@@ -295,9 +285,11 @@ pub fn update_cars(
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<&Intersection>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
+    mut commands: Commands,
 ) {
     for (entity, mut car, mut transform) in car_query.iter_mut() {
         if let Err(e) = try_update_car(
+            &mut commands,
             entity,
             &mut car,
             &mut transform,

@@ -79,20 +79,31 @@ impl RoadNetwork {
     }
 
     /// Finds the road entity connecting two intersection entities
-    pub fn find_road_between(&self, from_intersection_entity: IntersectionEntity, to_intersection_entity: IntersectionEntity) -> Option<RoadEntity> {
+    pub fn find_road_between(&self, from_intersection_entity: IntersectionEntity, to_intersection_entity: IntersectionEntity) -> anyhow::Result<RoadEntity> {
         // Look up the road in the adjacency list
-        self.adjacency
-            .get(&from_intersection_entity)?
+        let connections = self.adjacency
+            .get(&from_intersection_entity)
+            .ok_or_else(|| anyhow::anyhow!(
+                "Intersection {:?} not found in road network",
+                from_intersection_entity
+            ))?;
+        
+        connections
             .iter()
             .find(|(_, next_intersection_entity)| *next_intersection_entity == to_intersection_entity)
             .map(|(road_entity, _)| *road_entity)
+            .ok_or_else(|| anyhow::anyhow!(
+                "No road found connecting intersection {:?} to intersection {:?}",
+                from_intersection_entity,
+                to_intersection_entity
+            ))
     }
 
     /// Finds a path between two intersections (simple BFS for now)
-    /// Returns a list of intersection entities to traverse (including start and end)
+    /// Returns a list of intersection entities to traverse (excluding start, including end)
     pub fn find_path(&self, start_intersection_entity: IntersectionEntity, end_intersection_entity: IntersectionEntity) -> Option<Vec<IntersectionEntity>> {
         if start_intersection_entity == end_intersection_entity {
-            return Some(vec![start_intersection_entity]);
+            return Some(vec![]);
         }
 
         let mut queue = VecDeque::new();
@@ -104,15 +115,15 @@ impl RoadNetwork {
 
         while let Some(current_intersection_entity) = queue.pop_front() {
             if current_intersection_entity == end_intersection_entity {
-                // Reconstruct path
+                // Reconstruct path (excluding start node)
                 let mut path = Vec::new();
                 let mut node_intersection_entity = end_intersection_entity;
-                
+
                 while let Some(&prev_intersection_entity) = parent.get(&node_intersection_entity) {
                     path.push(node_intersection_entity);
                     node_intersection_entity = prev_intersection_entity;
                 }
-                path.push(start_intersection_entity);
+                // Don't push start_intersection_entity
                 
                 path.reverse();
                 return Some(path);

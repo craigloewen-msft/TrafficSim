@@ -253,7 +253,7 @@ fn handle_mouse_click(
         SpawnMode::Road => {
             if let Some(first_point) = road_state.first_point {
                 // We have a first point, so spawn the road
-                spawn_road_at_positions(
+                match spawn_road_at_positions(
                     &mut commands,
                     &mut meshes,
                     &mut materials,
@@ -261,7 +261,10 @@ fn handle_mouse_click(
                     &intersection_query,
                     first_point,
                     spawn_position,
-                );
+                ) {
+                    Ok(_) => {},
+                    Err(e) => eprintln!("Failed to spawn road: {:#}", e),
+                }
                 road_state.first_point = None;
             } else {
                 // This is the first point
