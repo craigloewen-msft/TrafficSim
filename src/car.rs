@@ -21,7 +21,6 @@ pub struct Car {
 }
 
 impl Car {
-
     /// Update car movement logic with proper error handling
     /// Returns `true` if the car should be despawned (reached destination or error)
     pub fn update_car(
@@ -30,7 +29,7 @@ impl Car {
         delta_secs: f32,
         road_network: &RoadNetwork,
         road_query: &Query<(Entity, &Road)>,
-        intersection_query: &Query<&Intersection>,
+        intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     ) -> Result<bool> {
         // Check if we've reached the final destination
         if self.path.is_empty() {
@@ -49,16 +48,16 @@ impl Car {
             .context("Path is empty, no target intersection")?;
 
         // Get start and end intersection positions
-        let start_intersection = intersection_query
+        let start_intersection_transform = intersection_query
             .get(self.start_intersection.0)
             .context("Start intersection not found")?;
 
-        let target_intersection = intersection_query
+        let target_intersection_transform = intersection_query
             .get(target_intersection_entity.0)
             .context("Target intersection not found")?;
 
-        let start_pos = start_intersection.position;
-        let end_pos = target_intersection.position;
+        let start_pos = start_intersection_transform.1.translation;
+        let end_pos = target_intersection_transform.1.translation;
 
         // Calculate road length
         let road_length = start_pos.distance(end_pos);
@@ -75,14 +74,15 @@ impl Car {
             // Remove the intersection we just reached from the path
             let reached_intersection = self.path.remove(0);
 
-        if self.path.is_empty() {
-            info!("Car reached final destination");
-            self.progress = 1.0;
-            transform.translation = end_pos;
+            if self.path.is_empty() {
+                info!("Car reached final destination");
+                self.progress = 1.0;
+                transform.translation = end_pos;
 
-            return Ok(true); // Signal that car should be despawned
-        }            // Get next intersection from path (peek at the next target)
-            let next_intersection_entity = *self.path.first().context("No next intersection in path")?;
+                return Ok(true); // Signal that car should be despawned
+            } // Get next intersection from path (peek at the next target)
+            let next_intersection_entity =
+                *self.path.first().context("No next intersection in path")?;
 
             // Find the road connecting to next intersection
             let next_road_entity = road_network
@@ -112,7 +112,8 @@ impl Car {
             let new_target_position = intersection_query
                 .get(next_intersection_entity.0)
                 .context("Failed to get new target intersection")?
-                .position;
+                .1
+                .translation;
 
             info!("Car moving to new position: {:.2?}", new_target_position);
         } else {
@@ -133,6 +134,89 @@ pub struct CarBundle {
     pub transform: Transform,
 }
 
+/// Helper function to spawn a single car
+/// This is called by the system and can take any system parameters it needs
+fn spawn_car(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    road_network: &RoadNetwork,
+    road_query: &Query<(Entity, &Road)>,
+    intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
+    spawn_intersection_entity: IntersectionEntity,
+    road_entity: Entity,
+    final_target_entity: Entity,
+) -> Result<Entity> {
+    let (_, road) = road_query
+        .get(road_entity)
+        .context("Failed to query road entity")?;
+
+    // Validate that the road is connected to the spawn intersection
+    if road.start_intersection_entity != spawn_intersection_entity
+        && road.end_intersection_entity != spawn_intersection_entity
+    {
+        anyhow::bail!(
+            "Road {:?} is not connected to intersection {:?}",
+            road_entity,
+            spawn_intersection_entity
+        );
+    }
+
+    let spawn_intersection_transform = intersection_query
+        .get(spawn_intersection_entity.0)
+        .context("Failed to get spawn intersection")?;
+
+    let spawn_pos = spawn_intersection_transform.1.translation + Vec3::new(0.0, 0.3, 0.0);
+
+    let path = road_network
+        .find_path(
+            spawn_intersection_entity,
+            IntersectionEntity(final_target_entity),
+        )
+        .context("No path found from start to destination")?;
+
+    let path_positions: Vec<Vec3> = path
+        .iter()
+        .map(|intersection_entity| {
+            intersection_query
+                .get(intersection_entity.0)
+                .context("Failed to find intersection for path pos")
+                .map(|(_, transform)| transform.translation)
+        })
+        .collect::<Result<Vec<_>>>()?;
+
+    // Determine rotation based on which end of the road we're starting from
+    let rotation = if road.start_intersection_entity == spawn_intersection_entity {
+        Quat::from_rotation_y(road.angle)
+    } else {
+        Quat::from_rotation_y(road.angle + std::f32::consts::PI)
+    };
+
+    info!(
+        "✓ Car spawning at {:.2?} with path: {:?} and positions: {:?}",
+        spawn_pos, path, path_positions
+    );
+
+    // Spawn the entity with all components
+    let entity = commands
+        .spawn(CarBundle {
+            car: Car {
+                speed: 4.0,
+                max_speed: 5.0,
+                current_road_entity: RoadEntity(road_entity),
+                progress: 0.0,
+                start_intersection: spawn_intersection_entity,
+                path,
+            },
+            mesh: Mesh3d(meshes.add(Cuboid::new(0.3, 0.2, 0.5))),
+            material: MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))),
+            transform: Transform::from_translation(spawn_pos).with_rotation(rotation),
+        })
+        .id();
+
+    Ok(entity)
+}
+
 /// System to spawn cars in the world
 pub fn spawn_cars(
     mut commands: Commands,
@@ -140,7 +224,7 @@ pub fn spawn_cars(
     mut materials: ResMut<Assets<StandardMaterial>>,
     road_network: Res<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
-    intersection_query: Query<&Intersection>,
+    intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
 ) {
     info!("=== SPAWNING CARS ===");
 
@@ -189,82 +273,12 @@ pub fn spawn_cars(
     }
 }
 
-/// Helper function to spawn a single car
-/// This is called by the system and can take any system parameters it needs
-fn spawn_car(
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    road_network: &RoadNetwork,
-    road_query: &Query<(Entity, &Road)>,
-    intersection_query: &Query<&Intersection>,
-    spawn_intersection_entity: IntersectionEntity,
-    road_entity: Entity,
-    final_target_entity: Entity,
-) -> Result<Entity> {
-    let (_, road) = road_query
-        .get(road_entity)
-        .context("Failed to query road entity")?;
-
-    // Validate that the road is connected to the spawn intersection
-    if road.start_intersection_entity != spawn_intersection_entity
-        && road.end_intersection_entity != spawn_intersection_entity
-    {
-        anyhow::bail!(
-            "Road {:?} is not connected to intersection {:?}",
-            road_entity,
-            spawn_intersection_entity
-        );
-    }
-
-    let spawn_intersection = intersection_query
-        .get(spawn_intersection_entity.0)
-        .context("Failed to get spawn intersection")?;
-
-    let spawn_pos = spawn_intersection.position + Vec3::new(0.0, 0.3, 0.0);
-
-    let path = road_network
-        .find_path(
-            spawn_intersection_entity,
-            IntersectionEntity(final_target_entity),
-        )
-        .context("No path found from start to destination")?;
-
-    // Determine rotation based on which end of the road we're starting from
-    let rotation = if road.start_intersection_entity == spawn_intersection_entity {
-        Quat::from_rotation_y(road.angle)
-    } else {
-        Quat::from_rotation_y(road.angle + std::f32::consts::PI)
-    };
-
-    // Spawn the entity with all components
-    let entity = commands
-        .spawn(CarBundle {
-            car: Car {
-                speed: 4.0,
-                max_speed: 5.0,
-                current_road_entity: RoadEntity(road_entity),
-                progress: 0.0,
-                start_intersection: spawn_intersection_entity,
-                path,
-            },
-            mesh: Mesh3d(meshes.add(Cuboid::new(0.3, 0.2, 0.5))),
-            material: MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))),
-            transform: Transform::from_translation(spawn_pos).with_rotation(rotation),
-        })
-        .id();
-
-    info!("✓ Car {:?} spawned at {:.2?}", entity, spawn_pos);
-
-    Ok(entity)
-}
-
 /// System to update car movement logic
 pub fn update_cars(
     time: Res<Time>,
     road_network: Res<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
-    intersection_query: Query<&Intersection>,
+    intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
     mut commands: Commands,
 ) {

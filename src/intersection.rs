@@ -1,4 +1,5 @@
 use bevy::prelude::*;
+use anyhow::Result;
 
 /// Wrapper type to make it clear this Entity refers to an Intersection
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -15,15 +16,13 @@ pub enum TrafficControlType {
 /// Component that marks an entity as an intersection
 #[derive(Component, Debug)]
 pub struct Intersection {
-    pub position: Vec3,
     pub traffic_control: TrafficControlType,
 }
 
 impl Intersection {
-    /// Creates a new intersection at the given position
-    pub fn new(position: Vec3, traffic_control: TrafficControlType) -> Self {
+    /// Creates a new intersection with the given traffic control type
+    pub fn new(traffic_control: TrafficControlType) -> Self {
         Self {
-            position,
             traffic_control,
         }
     }
@@ -36,14 +35,13 @@ pub fn spawn_intersection(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     position: Vec3,
     traffic_control: TrafficControlType,
-) -> Entity {
+) -> Result<IntersectionEntity> {
     const INTERSECTION_SIZE: f32 = 0.6;
     const INTERSECTION_HEIGHT: f32 = 0.03;
     let intersection_color = Color::srgb(0.3, 0.3, 0.3);
 
-    commands.spawn((
+    let entity = commands.spawn((
         Intersection {
-            position,
             traffic_control,
         },
         Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
@@ -53,13 +51,7 @@ pub fn spawn_intersection(
             INTERSECTION_HEIGHT / 2.0,
             position.z,
         )),
-    )).id()
-}
+    )).id();
 
-/// Data stored in the road network for pathfinding
-#[derive(Debug, Clone)]
-pub struct IntersectionData {
-    pub position: Vec3,
-    pub entity: Entity,
-    pub traffic_control: TrafficControlType,
+    Ok(IntersectionEntity(entity))
 }

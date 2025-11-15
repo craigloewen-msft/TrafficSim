@@ -1,7 +1,9 @@
+use anyhow::{Context, Result};
 use bevy::prelude::*;
-use anyhow::Result;
 
-use crate::intersection::{Intersection, IntersectionEntity, TrafficControlType};
+use crate::car::Car;
+use crate::intersection::{self, Intersection, IntersectionEntity, TrafficControlType};
+use crate::road;
 use crate::road_network::RoadNetwork;
 
 // Import the spawn helper function
@@ -21,19 +23,19 @@ pub struct Road {
     pub angle: f32,       // Rotation angle in radians (Y-axis rotation)
 }
 
-impl Road {
-}
+impl Road {}
 
 /// Helper function to spawn a new road entity with all necessary components
 fn spawn_road(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
+    intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
+    road_network: &mut ResMut<RoadNetwork>,
     start_intersection_entity: IntersectionEntity,
     end_intersection_entity: IntersectionEntity,
     start_pos: Vec3,
     end_pos: Vec3,
-    road_network: &mut ResMut<RoadNetwork>,
 ) -> Result<RoadEntity> {
     const ROAD_WIDTH: f32 = 0.4;
     const ROAD_HEIGHT: f32 = 0.02;
@@ -86,63 +88,40 @@ pub fn spawn_road_at_positions(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     road_network: &mut ResMut<RoadNetwork>,
-    intersection_query: &Query<&Intersection>,
+    intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     start_pos: Vec3,
     end_pos: Vec3,
-) -> Result<Entity> {
-    const INTERSECTION_SNAP_DISTANCE: f32 = 0.1;
+) -> Result<RoadEntity> {
+    let start_intersection_entity = spawn_intersection(
+        commands,
+        meshes,
+        materials,
+        start_pos,
+        TrafficControlType::None,
+    )?;
 
-    // Find or create start intersection
-    let (start_intersection_entity, start_intersection_pos) = road_network
-        .find_nearest_intersection(start_pos, intersection_query)
-        .and_then(|intersection_entity| {
-            intersection_query
-                .get(intersection_entity.0)
-                .ok()
-                .filter(|intersection| {
-                    intersection.position.distance(start_pos) < INTERSECTION_SNAP_DISTANCE
-                })
-                .map(|intersection| (intersection_entity, intersection.position))
-        })
-        .unwrap_or_else(|| {
-            let entity = spawn_intersection(commands, meshes, materials, start_pos, TrafficControlType::None);
-            let intersection_entity = IntersectionEntity(entity);
-            road_network.add_intersection(intersection_entity);
-            (intersection_entity, start_pos)
-        });
-
-    // Find or create end intersection
-    let (end_intersection_entity, end_intersection_pos) = road_network
-        .find_nearest_intersection(end_pos, intersection_query)
-        .and_then(|intersection_entity| {
-            intersection_query
-                .get(intersection_entity.0)
-                .ok()
-                .filter(|intersection| {
-                    intersection.position.distance(end_pos) < INTERSECTION_SNAP_DISTANCE
-                })
-                .map(|intersection| (intersection_entity, intersection.position))
-        })
-        .unwrap_or_else(|| {
-            let entity = spawn_intersection(commands, meshes, materials, end_pos, TrafficControlType::None);
-            let intersection_entity = IntersectionEntity(entity);
-            road_network.add_intersection(intersection_entity);
-            (intersection_entity, end_pos)
-        });
+    let end_intersection_entity = spawn_intersection(
+        commands,
+        meshes,
+        materials,
+        end_pos,
+        TrafficControlType::None,
+    )?;
 
     // Create and spawn road using positions directly
     let road_entity = spawn_road(
         commands,
         meshes,
         materials,
+        intersection_query,
+        road_network,
         start_intersection_entity,
         end_intersection_entity,
-        start_intersection_pos,
-        end_intersection_pos,
-        road_network,
+        start_pos,
+        end_pos,
     )?;
-    
-    Ok(road_entity.0)
+
+    Ok(road_entity)
 }
 
 /// System to spawn roads connecting houses
@@ -151,6 +130,7 @@ pub fn spawn_roads(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut road_network: ResMut<RoadNetwork>,
+    intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
 ) {
     // Define house positions (should match house.rs)
     let house_positions = vec![
@@ -165,8 +145,13 @@ pub fn spawn_roads(
     let mut intersection_entities = Vec::new();
 
     for position in &house_positions {
-        let entity = spawn_intersection(&mut commands, &mut meshes, &mut materials, *position, TrafficControlType::StopSign);
-        let intersection_entity = IntersectionEntity(entity);
+        let intersection_entity = spawn_intersection(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            *position,
+            TrafficControlType::StopSign,
+        ).expect("Failed to spawn intersection");
 
         road_network.add_intersection(intersection_entity);
 
@@ -193,11 +178,12 @@ pub fn spawn_roads(
             &mut commands,
             &mut meshes,
             &mut materials,
+            &intersection_query,
+            &mut road_network,
             start_intersection_entity,
             end_intersection_entity,
             start_pos,
             end_pos,
-            &mut road_network,
         ) {
             bevy::log::error!("Failed to spawn road: {:#}", e);
         }

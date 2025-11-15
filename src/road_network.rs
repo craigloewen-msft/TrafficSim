@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use std::collections::{HashMap, VecDeque, HashSet};
 
+use crate::car::Car;
 use crate::intersection::{IntersectionEntity, Intersection};
 use crate::road::RoadEntity;
 
@@ -43,7 +44,7 @@ impl RoadNetwork {
     pub fn find_nearest_intersection(
         &self,
         position: Vec3,
-        intersection_query: &Query<&Intersection>,
+        intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     ) -> Option<IntersectionEntity> {
         self.adjacency
             .keys()
@@ -51,7 +52,7 @@ impl RoadNetwork {
                 intersection_query
                     .get(intersection_entity.0)
                     .ok()
-                    .map(|intersection| (intersection_entity, intersection.position.distance_squared(position)))
+                    .map(|(_, transform)| (intersection_entity, transform.translation.distance_squared(position)))
             })
             .min_by(|(_, dist_a), (_, dist_b)| dist_a.partial_cmp(dist_b).unwrap())
             .map(|(intersection_entity, _)| intersection_entity)
