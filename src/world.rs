@@ -13,7 +13,7 @@ pub fn setup_world(
     // Spawn a 3D camera with top-down view
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 50.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
+        Transform::from_xyz(0.0, 70.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
     ));
 
     // Spawn a directional light

@@ -92,6 +92,7 @@ pub fn spawn_road_at_positions(
         commands,
         meshes,
         materials,
+        road_network,
         start_pos,
     )?;
 
@@ -99,6 +100,7 @@ pub fn spawn_road_at_positions(
         commands,
         meshes,
         materials,
+        road_network,
         end_pos,
     )?;
 
@@ -117,16 +119,15 @@ pub fn spawn_road_at_positions(
     Ok(road_entity)
 }
 
-/// System to spawn roads connecting houses
+/// System to spawn roads connecting intersections and houses with driveways
 pub fn spawn_roads(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut road_network: ResMut<RoadNetwork>,
 ) {
-    // Define house positions (should match house.rs)
-    // Simple 4x3 grid layout - no overlaps
-    let house_positions = vec![
+    // Define main road intersection positions (these form the primary road network)
+    let road_positions = vec![
         // Row 1 (top)
         Vec3::new(-20.0, 0.0, -20.0),  // 0
         Vec3::new(-6.0, 0.0, -20.0),   // 1
@@ -142,18 +143,17 @@ pub fn spawn_roads(
         Vec3::new(-6.0, 0.0, 20.0),    // 9
     ];
 
-    // First, create all intersections at house positions
+    // First, create all road intersections
     let mut intersection_entities = Vec::new();
 
-    for position in &house_positions {
+    for position in &road_positions {
         let intersection_entity = spawn_intersection(
             &mut commands,
             &mut meshes,
             &mut materials,
+            &mut road_network,
             *position,
         ).expect("Failed to spawn intersection");
-
-        road_network.add_intersection(intersection_entity);
 
         intersection_entities.push(intersection_entity);
     }
@@ -184,8 +184,8 @@ pub fn spawn_roads(
     ];
 
     for (start_idx, end_idx) in road_connections {
-        let start_pos = house_positions[start_idx];
-        let end_pos = house_positions[end_idx];
+        let start_pos = road_positions[start_idx];
+        let end_pos = road_positions[end_idx];
         let start_intersection_entity = intersection_entities[start_idx];
         let end_intersection_entity = intersection_entities[end_idx];
 
@@ -201,6 +201,45 @@ pub fn spawn_roads(
             end_pos,
         ) {
             bevy::log::error!("Failed to spawn road: {:#}", e);
+        }
+    }
+
+    // Now spawn houses with driveways connecting to nearby road intersections
+    // Define house positions and which road intersection they connect to
+    let house_configs = vec![
+        // Houses along the top road (offset to the north)
+        (Vec3::new(-20.0, 0.0, -25.0), 0),  // House north of intersection 0
+        (Vec3::new(-6.0, 0.0, -25.0), 1),   // House north of intersection 1
+        (Vec3::new(8.0, 0.0, -25.0), 2),    // House north of intersection 2
+        (Vec3::new(22.0, 0.0, -25.0), 3),   // House north of intersection 3
+        
+        // Houses along the left side (offset to the west)
+        (Vec3::new(-25.0, 0.0, 0.0), 4),    // House west of intersection 4
+        (Vec3::new(-25.0, 0.0, 20.0), 8),   // House west of intersection 8
+        
+        // Houses along the right side (offset to the east)
+        (Vec3::new(27.0, 0.0, -20.0), 3),   // House east of intersection 3
+        (Vec3::new(27.0, 0.0, 0.0), 7),     // House east of intersection 7
+        
+        // Houses along the middle (offset to the south)
+        (Vec3::new(-6.0, 0.0, 5.0), 5),     // House south of intersection 5
+        (Vec3::new(8.0, 0.0, 5.0), 6),      // House south of intersection 6
+    ];
+
+    for (house_pos, road_intersection_idx) in house_configs {
+        let road_intersection_entity = intersection_entities[road_intersection_idx];
+        let road_intersection_pos = road_positions[road_intersection_idx];
+
+        if let Err(e) = crate::house::spawn_house_with_driveway(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut road_network,
+            house_pos,
+            road_intersection_entity,
+            road_intersection_pos,
+        ) {
+            bevy::log::error!("Failed to spawn house with driveway: {:#}", e);
         }
     }
 }
