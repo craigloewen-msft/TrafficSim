@@ -13,7 +13,6 @@ pub struct CarEntity(pub Entity);
 #[derive(Component)]
 pub struct Car {
     pub speed: f32,
-    pub max_speed: f32,
     pub current_road_entity: RoadEntity, // The road entity the car is currently on
     pub progress: f32,                   // 0.0 to 1.0 along the current road
     pub start_intersection: IntersectionEntity, // The intersection where we started on this road
@@ -146,7 +145,7 @@ fn spawn_car(
     spawn_intersection_entity: IntersectionEntity,
     road_entity: Entity,
     final_target_entity: Entity,
-) -> Result<Entity> {
+) -> Result<CarEntity> {
     let (_, road) = road_query
         .get(road_entity)
         .context("Failed to query road entity")?;
@@ -202,7 +201,6 @@ fn spawn_car(
         .spawn(CarBundle {
             car: Car {
                 speed: 4.0,
-                max_speed: 5.0,
                 current_road_entity: RoadEntity(road_entity),
                 progress: 0.0,
                 start_intersection: spawn_intersection_entity,
@@ -214,7 +212,7 @@ fn spawn_car(
         })
         .id();
 
-    Ok(entity)
+    Ok(CarEntity(entity))
 }
 
 /// System to spawn cars in the world

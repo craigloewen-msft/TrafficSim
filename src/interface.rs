@@ -1,8 +1,6 @@
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use crate::car::Car;
 use crate::house::spawn_house;
-use crate::intersection::Intersection;
 use crate::road::spawn_road_at_positions;
 use crate::road_network::RoadNetwork;
 
@@ -206,7 +204,6 @@ fn handle_mouse_click(
     mouse_button: Res<ButtonInput<MouseButton>>,
     window_query: Query<&Window, With<PrimaryWindow>>,
     camera_query: Query<(&Camera, &GlobalTransform)>,
-    intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
 ) {
     if !mouse_button.just_pressed(MouseButton::Left) {
         return;
@@ -259,7 +256,6 @@ fn handle_mouse_click(
                     &mut meshes,
                     &mut materials,
                     &mut road_network,
-                    &intersection_query,
                     first_point,
                     spawn_position,
                 ) {

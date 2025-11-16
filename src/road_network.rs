@@ -1,8 +1,7 @@
 use bevy::prelude::*;
-use std::collections::{HashMap, VecDeque, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::car::Car;
-use crate::intersection::{IntersectionEntity, Intersection};
+use crate::intersection::IntersectionEntity;
 use crate::road::RoadEntity;
 
 /// Resource to store the road network graph for pathfinding
@@ -17,7 +16,9 @@ pub struct RoadNetwork {
 impl RoadNetwork {
     /// Adds an intersection to the network graph
     pub fn add_intersection(&mut self, intersection_entity: IntersectionEntity) {
-        self.adjacency.entry(intersection_entity).or_insert_with(Vec::new);
+        self.adjacency
+            .entry(intersection_entity)
+            .or_insert_with(Vec::new);
     }
 
     /// Adds a road to the network and updates the graph adjacency
@@ -32,77 +33,52 @@ impl RoadNetwork {
             .entry(start_intersection_entity)
             .or_insert_with(Vec::new)
             .push((road_entity, end_intersection_entity));
-        
+
         self.adjacency
             .entry(end_intersection_entity)
             .or_insert_with(Vec::new)
             .push((road_entity, start_intersection_entity));
     }
 
-    /// Finds the nearest intersection to a given position
-    /// Requires query to access actual intersection component data
-    pub fn find_nearest_intersection(
-        &self,
-        position: Vec3,
-        intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
-    ) -> Option<IntersectionEntity> {
-        self.adjacency
-            .keys()
-            .filter_map(|&intersection_entity| {
-                intersection_query
-                    .get(intersection_entity.0)
-                    .ok()
-                    .map(|(_, transform)| (intersection_entity, transform.translation.distance_squared(position)))
-            })
-            .min_by(|(_, dist_a), (_, dist_b)| dist_a.partial_cmp(dist_b).unwrap())
-            .map(|(intersection_entity, _)| intersection_entity)
-    }
-
-    /// Gets all roads connected to an intersection
-    pub fn get_connected_roads(&self, intersection_entity: IntersectionEntity) -> Vec<RoadEntity> {
-        self.adjacency
-            .get(&intersection_entity)
-            .map(|connections| {
-                connections
-                    .iter()
-                    .map(|(road_entity, _)| *road_entity)
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// Gets all neighboring intersections from a given intersection
-    pub fn get_neighbors(&self, intersection_entity: IntersectionEntity) -> Vec<IntersectionEntity> {
-        self.adjacency
-            .get(&intersection_entity)
-            .map(|connections| connections.iter().map(|(_, next_intersection_entity)| *next_intersection_entity).collect())
-            .unwrap_or_default()
-    }
-
     /// Finds the road entity connecting two intersection entities
-    pub fn find_road_between(&self, from_intersection_entity: IntersectionEntity, to_intersection_entity: IntersectionEntity) -> anyhow::Result<RoadEntity> {
+    pub fn find_road_between(
+        &self,
+        from_intersection_entity: IntersectionEntity,
+        to_intersection_entity: IntersectionEntity,
+    ) -> anyhow::Result<RoadEntity> {
         // Look up the road in the adjacency list
-        let connections = self.adjacency
+        let connections = self
+            .adjacency
             .get(&from_intersection_entity)
-            .ok_or_else(|| anyhow::anyhow!(
-                "Intersection {:?} not found in road network",
-                from_intersection_entity
-            ))?;
-        
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Intersection {:?} not found in road network",
+                    from_intersection_entity
+                )
+            })?;
+
         connections
             .iter()
-            .find(|(_, next_intersection_entity)| *next_intersection_entity == to_intersection_entity)
+            .find(|(_, next_intersection_entity)| {
+                *next_intersection_entity == to_intersection_entity
+            })
             .map(|(road_entity, _)| *road_entity)
-            .ok_or_else(|| anyhow::anyhow!(
-                "No road found connecting intersection {:?} to intersection {:?}",
-                from_intersection_entity,
-                to_intersection_entity
-            ))
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No road found connecting intersection {:?} to intersection {:?}",
+                    from_intersection_entity,
+                    to_intersection_entity
+                )
+            })
     }
 
     /// Finds a path between two intersections (simple BFS for now)
     /// Returns a list of intersection entities to traverse (excluding start, including end)
-    pub fn find_path(&self, start_intersection_entity: IntersectionEntity, end_intersection_entity: IntersectionEntity) -> Option<Vec<IntersectionEntity>> {
+    pub fn find_path(
+        &self,
+        start_intersection_entity: IntersectionEntity,
+        end_intersection_entity: IntersectionEntity,
+    ) -> Option<Vec<IntersectionEntity>> {
         if start_intersection_entity == end_intersection_entity {
             return Some(vec![]);
         }
@@ -125,7 +101,7 @@ impl RoadNetwork {
                     node_intersection_entity = prev_intersection_entity;
                 }
                 // Don't push start_intersection_entity
-                
+
                 path.reverse();
                 return Some(path);
             }

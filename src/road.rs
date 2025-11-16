@@ -1,9 +1,7 @@
-use anyhow::{Context, Result};
+use anyhow::Result;
 use bevy::prelude::*;
 
-use crate::car::Car;
-use crate::intersection::{self, Intersection, IntersectionEntity, TrafficControlType};
-use crate::road;
+use crate::intersection::{IntersectionEntity};
 use crate::road_network::RoadNetwork;
 
 // Import the spawn helper function
@@ -18,8 +16,8 @@ pub struct RoadEntity(pub Entity);
 pub struct Road {
     pub start_intersection_entity: IntersectionEntity,
     pub end_intersection_entity: IntersectionEntity,
-    pub lane_count: u32,
-    pub speed_limit: f32, // m/s
+    // pub lane_count: u32,
+    // pub speed_limit: f32, // m/s
     pub angle: f32,       // Rotation angle in radians (Y-axis rotation)
 }
 
@@ -30,7 +28,6 @@ fn spawn_road(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
-    intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     road_network: &mut ResMut<RoadNetwork>,
     start_intersection_entity: IntersectionEntity,
     end_intersection_entity: IntersectionEntity,
@@ -58,8 +55,8 @@ fn spawn_road(
             Road {
                 start_intersection_entity,
                 end_intersection_entity,
-                lane_count: 2,     // Default 2 lanes
-                speed_limit: 13.4, // Default ~30 mph in m/s
+                // lane_count: 2,     // Default 2 lanes
+                // speed_limit: 13.4, // Default ~30 mph in m/s
                 angle,
             },
             Mesh3d(meshes.add(Cuboid::new(ROAD_WIDTH, ROAD_HEIGHT, length))),
@@ -88,7 +85,6 @@ pub fn spawn_road_at_positions(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     road_network: &mut ResMut<RoadNetwork>,
-    intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     start_pos: Vec3,
     end_pos: Vec3,
 ) -> Result<RoadEntity> {
@@ -97,7 +93,6 @@ pub fn spawn_road_at_positions(
         meshes,
         materials,
         start_pos,
-        TrafficControlType::None,
     )?;
 
     let end_intersection_entity = spawn_intersection(
@@ -105,7 +100,6 @@ pub fn spawn_road_at_positions(
         meshes,
         materials,
         end_pos,
-        TrafficControlType::None,
     )?;
 
     // Create and spawn road using positions directly
@@ -113,7 +107,6 @@ pub fn spawn_road_at_positions(
         commands,
         meshes,
         materials,
-        intersection_query,
         road_network,
         start_intersection_entity,
         end_intersection_entity,
@@ -130,7 +123,6 @@ pub fn spawn_roads(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut road_network: ResMut<RoadNetwork>,
-    intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
 ) {
     // Define house positions (should match house.rs)
     let house_positions = vec![
@@ -150,7 +142,6 @@ pub fn spawn_roads(
             &mut meshes,
             &mut materials,
             *position,
-            TrafficControlType::StopSign,
         ).expect("Failed to spawn intersection");
 
         road_network.add_intersection(intersection_entity);
@@ -178,7 +169,6 @@ pub fn spawn_roads(
             &mut commands,
             &mut meshes,
             &mut materials,
-            &intersection_query,
             &mut road_network,
             start_intersection_entity,
             end_intersection_entity,

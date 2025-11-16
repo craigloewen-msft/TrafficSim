@@ -53,9 +53,9 @@ pub struct HouseBundle {
 
 /// System to spawn houses in the world
 pub fn spawn_houses(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    // commands: Commands,
+    // meshes: ResMut<Assets<Mesh>>,
+    // materials: ResMut<Assets<StandardMaterial>>,
 ) {
     // // Spawn a couple of sample houses (smaller size)
     // let house_positions = vec![
