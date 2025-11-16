@@ -1,15 +1,13 @@
-use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
-use crate::house::spawn_house;
 use crate::road::spawn_road_at_positions;
 use crate::road_network::RoadNetwork;
+use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 
 /// Resource to track what the player wants to spawn
 #[derive(Resource, Default, PartialEq, Clone)]
 pub enum SpawnMode {
     #[default]
     None,
-    House,
     Road,
 }
 
@@ -49,31 +47,6 @@ pub fn setup_ui(mut commands: Commands) {
             BackgroundColor(Color::srgba(0.15, 0.15, 0.15, 0.1)),
         ))
         .with_children(|parent| {
-            // House spawn button
-            parent
-                .spawn((
-                    SpawnButton {
-                        mode: SpawnMode::House,
-                    },
-                    Button,
-                    Node {
-                        width: Val::Px(120.0),
-                        height: Val::Px(40.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.4, 0.4, 0.6, 0.1)),
-                ))
-                .with_child((
-                    Text::new("Spawn House"),
-                    TextFont {
-                        font_size: 16.0,
-                        ..default()
-                    },
-                    TextColor(Color::WHITE),
-                ));
-
             // Road spawn button
             parent
                 .spawn((
@@ -98,31 +71,6 @@ pub fn setup_ui(mut commands: Commands) {
                     },
                     TextColor(Color::WHITE),
                 ));
-
-            // Clear/Cancel button
-            parent
-                .spawn((
-                    SpawnButton {
-                        mode: SpawnMode::None,
-                    },
-                    Button,
-                    Node {
-                        width: Val::Px(120.0),
-                        height: Val::Px(40.0),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        ..default()
-                    },
-                    BackgroundColor(Color::srgba(0.5, 0.2, 0.2, 0.1)),
-                ))
-                .with_child((
-                    Text::new("Cancel"),
-                    TextFont {
-                        font_size: 16.0,
-                        ..default()
-                    },
-                    TextColor(Color::WHITE),
-                ));
         });
 }
 
@@ -141,24 +89,21 @@ pub fn handle_button_interaction(
                 *spawn_mode = button.mode.clone();
                 // Reset road spawn state when changing modes
                 road_state.first_point = None;
-                
+
                 // Update button colors to show selection
                 *bg_color = match button.mode {
-                    SpawnMode::House => Color::srgb(0.2, 0.7, 0.3).into(),
                     SpawnMode::Road => Color::srgb(0.1, 0.1, 0.1).into(),
                     SpawnMode::None => Color::srgb(0.7, 0.2, 0.2).into(),
                 };
             }
             Interaction::Hovered => {
                 *bg_color = match button.mode {
-                    SpawnMode::House => Color::srgb(0.5, 0.5, 0.7).into(),
                     SpawnMode::Road => Color::srgb(0.4, 0.4, 0.4).into(),
                     SpawnMode::None => Color::srgb(0.6, 0.3, 0.3).into(),
                 };
             }
             Interaction::None => {
                 *bg_color = match button.mode {
-                    SpawnMode::House => Color::srgb(0.4, 0.4, 0.6).into(),
                     SpawnMode::Road => Color::srgb(0.3, 0.3, 0.3).into(),
                     SpawnMode::None => Color::srgb(0.5, 0.2, 0.2).into(),
                 };
@@ -180,13 +125,11 @@ pub fn update_button_colors(
         // Highlight the active mode
         if button.mode == *spawn_mode {
             *bg_color = match button.mode {
-                SpawnMode::House => Color::srgb(0.2, 0.7, 0.3).into(),
                 SpawnMode::Road => Color::srgb(0.1, 0.1, 0.1).into(),
                 SpawnMode::None => Color::srgb(0.3, 0.3, 0.3).into(),
             };
         } else {
             *bg_color = match button.mode {
-                SpawnMode::House => Color::srgb(0.4, 0.4, 0.6).into(),
                 SpawnMode::Road => Color::srgb(0.3, 0.3, 0.3).into(),
                 SpawnMode::None => Color::srgb(0.5, 0.2, 0.2).into(),
             };
@@ -232,7 +175,7 @@ fn handle_mouse_click(
     // For y = 0: origin.y + t * direction.y = 0
     // Therefore: t = -origin.y / direction.y
     let t = -ray.origin.y / ray.direction.y;
-    
+
     if t < 0.0 {
         return; // Ray is pointing away from the ground
     }
@@ -241,14 +184,6 @@ fn handle_mouse_click(
     let spawn_position = Vec3::new(world_position.x, 0.5, world_position.z);
 
     match *spawn_mode {
-        SpawnMode::House => {
-            spawn_house(
-                &mut commands,
-                &mut meshes,
-                &mut materials,
-                spawn_position,
-            );
-        }
         SpawnMode::Road => {
             if let Some(first_point) = road_state.first_point {
                 // We have a first point, so spawn the road
@@ -260,7 +195,7 @@ fn handle_mouse_click(
                     first_point,
                     spawn_position,
                 ) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => eprintln!("Failed to spawn road: {:#}", e),
                 }
                 road_state.first_point = None;
