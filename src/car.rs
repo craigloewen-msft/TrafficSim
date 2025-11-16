@@ -4,6 +4,7 @@ use crate::road_network::RoadNetwork;
 use anyhow::{Context, Result};
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
+use rand::seq::IndexedRandom;
 
 /// Wrapper type for car entities to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -24,6 +25,7 @@ impl Car {
     /// Returns `true` if the car should be despawned (reached destination or error)
     pub fn update_car(
         &mut self,
+        car_entity: &CarEntity,
         transform: &mut Transform,
         delta_secs: f32,
         road_network: &RoadNetwork,
@@ -74,7 +76,7 @@ impl Car {
             let reached_intersection = self.path.remove(0);
 
             if self.path.is_empty() {
-                info!("Car reached final destination");
+                info!("Car {:?} reached final destination", car_entity);
                 self.progress = 1.0;
                 transform.translation = end_pos;
 
@@ -114,7 +116,7 @@ impl Car {
                 .1
                 .translation;
 
-            info!("Car moving to new position: {:.2?}", new_target_position);
+            info!("Car {:?} moving to new position: {:.2?}", car_entity, new_target_position);
         } else {
             // Interpolate position along current road
             transform.translation = start_pos.lerp(end_pos, self.progress);
@@ -191,11 +193,6 @@ fn spawn_car(
         Quat::from_rotation_y(road.angle + std::f32::consts::PI)
     };
 
-    info!(
-        "✓ Car spawning at {:.2?} with path: {:?} and positions: {:?}",
-        spawn_pos, path, path_positions
-    );
-
     // Spawn the entity with all components
     let entity = commands
         .spawn(CarBundle {
@@ -212,6 +209,11 @@ fn spawn_car(
         })
         .id();
 
+    info!(
+        "✓ Car {:?} spawning at {:.2?} and positions: {:?}",
+        entity, spawn_pos, path_positions
+    );
+
     Ok(CarEntity(entity))
 }
 
@@ -226,7 +228,7 @@ pub fn spawn_cars(
 ) {
     info!("=== SPAWNING CARS ===");
 
-    let num_cars_to_spawn = 1;
+    let num_cars_to_spawn = 5;
 
     // Collect road entities from the road query
     let road_entities: Vec<Entity> = road_query.iter().map(|(entity, _)| entity).collect();
@@ -247,12 +249,14 @@ pub fn spawn_cars(
         return;
     }
 
+    let mut rng = rand::rng();
+
     for _ in 0..num_cars_to_spawn {
         // Choose a road and intersections
-        let road_entity = *road_entities.last().unwrap();
+        let road_entity = *road_entities.choose(&mut rng).unwrap();
         let (_, road) = road_query.get(road_entity).unwrap();
         let spawn_intersection_entity = road.start_intersection_entity;
-        let final_target_entity = *all_intersections.last().unwrap();
+        let final_target_entity = *all_intersections.choose(&mut rng).unwrap();
 
         // Spawn the car entity - all ECS operations stay in the system
         if let Err(e) = spawn_car(
@@ -282,6 +286,7 @@ pub fn update_cars(
 ) {
     for (entity, mut car, mut transform) in car_query.iter_mut() {
         match car.update_car(
+            &CarEntity(entity),
             &mut transform,
             time.delta_secs(),
             &road_network,

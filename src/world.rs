@@ -13,7 +13,7 @@ pub fn setup_world(
     // Spawn a 3D camera with top-down view
     commands.spawn((
         Camera3d::default(),
-        Transform::from_xyz(0.0, 25.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
+        Transform::from_xyz(0.0, 50.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
     ));
 
     // Spawn a directional light
@@ -29,7 +29,7 @@ pub fn setup_world(
     // Spawn a ground plane
     commands.spawn((
         Ground,
-        Mesh3d(meshes.add(Plane3d::default().mesh().size(30.0, 30.0))),
+        Mesh3d(meshes.add(Plane3d::default().mesh().size(200.0, 200.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
     ));
 }

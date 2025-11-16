@@ -40,12 +40,13 @@ pub fn setup_ui(mut commands: Commands) {
                 height: Val::Px(60.0),
                 position_type: PositionType::Absolute,
                 bottom: Val::Px(0.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
+                justify_content: JustifyContent::FlexStart,
+                align_items: AlignItems::FlexStart,
                 column_gap: Val::Px(10.0),
+                padding: UiRect::left(Val::Px(10.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.15, 0.15, 0.15, 0.9)),
+            BackgroundColor(Color::srgba(0.15, 0.15, 0.15, 0.1)),
         ))
         .with_children(|parent| {
             // House spawn button
@@ -62,7 +63,7 @@ pub fn setup_ui(mut commands: Commands) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.4, 0.4, 0.6)),
+                    BackgroundColor(Color::srgba(0.4, 0.4, 0.6, 0.1)),
                 ))
                 .with_child((
                     Text::new("Spawn House"),
@@ -87,7 +88,7 @@ pub fn setup_ui(mut commands: Commands) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.3, 0.3, 0.3)),
+                    BackgroundColor(Color::srgba(0.3, 0.3, 0.3, 0.1)),
                 ))
                 .with_child((
                     Text::new("Spawn Road"),
@@ -112,7 +113,7 @@ pub fn setup_ui(mut commands: Commands) {
                         align_items: AlignItems::Center,
                         ..default()
                     },
-                    BackgroundColor(Color::srgb(0.5, 0.2, 0.2)),
+                    BackgroundColor(Color::srgba(0.5, 0.2, 0.2, 0.1)),
                 ))
                 .with_child((
                     Text::new("Cancel"),

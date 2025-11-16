@@ -125,12 +125,21 @@ pub fn spawn_roads(
     mut road_network: ResMut<RoadNetwork>,
 ) {
     // Define house positions (should match house.rs)
+    // Simple 4x3 grid layout - no overlaps
     let house_positions = vec![
-        Vec3::new(-8.0, 0.0, -8.0),
-        Vec3::new(8.0, 0.0, -8.0),
-        Vec3::new(-8.0, 0.0, 8.0),
-        Vec3::new(8.0, 0.0, 8.0),
-        Vec3::new(-14.0, 0.0, -8.0),
+        // Row 1 (top)
+        Vec3::new(-20.0, 0.0, -20.0),  // 0
+        Vec3::new(-6.0, 0.0, -20.0),   // 1
+        Vec3::new(8.0, 0.0, -20.0),    // 2
+        Vec3::new(22.0, 0.0, -20.0),   // 3
+        // Row 2 (middle)
+        Vec3::new(-20.0, 0.0, 0.0),    // 4
+        Vec3::new(-6.0, 0.0, 0.0),     // 5
+        Vec3::new(8.0, 0.0, 0.0),      // 6
+        Vec3::new(22.0, 0.0, 0.0),     // 7
+        // Row 3 (bottom)
+        Vec3::new(-20.0, 0.0, 20.0),   // 8
+        Vec3::new(-6.0, 0.0, 20.0),    // 9
     ];
 
     // First, create all intersections at house positions
@@ -150,12 +159,28 @@ pub fn spawn_roads(
     }
 
     // Create road connections between intersections
+    // Grid connections only - horizontal and vertical
     let road_connections = vec![
-        (0, 1), // Left to Right (top)
-        (2, 3), // Left to Right (bottom)
-        (0, 2), // Top to Bottom (left)
-        (1, 3), // Top to Bottom (right)
-        (4, 0), // Extra house connection
+        // Row 1 horizontal
+        (0, 1), (1, 2), (2, 3),
+        // Row 2 horizontal
+        (4, 5), (5, 6), (6, 7),
+        // Row 3 horizontal
+        (8, 9),
+        
+        // Column 1 vertical
+        (0, 4), (4, 8),
+        // Column 2 vertical
+        (1, 5), (5, 9),
+        // Column 3 vertical
+        (2, 6),
+        // Column 4 vertical
+        (3, 7),
+        
+        // Some diagonal connections for interest
+        (0, 5), (1, 6), (2, 7),
+        (4, 9), (5, 6), (1, 4),
+        (2, 5), (6, 9),
     ];
 
     for (start_idx, end_idx) in road_connections {
