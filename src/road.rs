@@ -12,13 +12,14 @@ use crate::intersection::spawn_intersection;
 pub struct RoadEntity(pub Entity);
 
 /// Component that marks an entity as a road segment
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Clone, Copy)]
 pub struct Road {
     pub start_intersection_entity: IntersectionEntity,
     pub end_intersection_entity: IntersectionEntity,
+    pub length: f32,      // Length of the road in world units
+    pub angle: f32,       // Rotation angle in radians (Y-axis rotation)
     // pub lane_count: u32,
     // pub speed_limit: f32, // m/s
-    pub angle: f32,       // Rotation angle in radians (Y-axis rotation)
 }
 
 impl Road {}
@@ -49,16 +50,19 @@ fn spawn_road(
     // Use the calculated angle for rotation
     let rotation = Quat::from_rotation_y(angle);
 
+    let road = Road {
+        start_intersection_entity,
+        end_intersection_entity,
+        length,
+        angle,
+        // lane_count: 2,     // Default 2 lanes
+        // speed_limit: 13.4, // Default ~30 mph in m/s
+    };
+
     // Spawn road segment
     let road_entity = commands
         .spawn((
-            Road {
-                start_intersection_entity,
-                end_intersection_entity,
-                // lane_count: 2,     // Default 2 lanes
-                // speed_limit: 13.4, // Default ~30 mph in m/s
-                angle,
-            },
+            road,
             Mesh3d(meshes.add(Cuboid::new(ROAD_WIDTH, ROAD_HEIGHT, length))),
             MeshMaterial3d(materials.add(road_color)),
             Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
@@ -68,11 +72,10 @@ fn spawn_road(
 
     let road_entity_wrapper = RoadEntity(road_entity);
 
-    // Add to network
+    // Add to network with the Road component
     road_network.add_road(
         road_entity_wrapper,
-        start_intersection_entity,
-        end_intersection_entity,
+        &road,
     );
 
     Ok(road_entity_wrapper)

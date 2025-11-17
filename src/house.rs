@@ -90,12 +90,15 @@ fn spawn_driveway(
     let midpoint = (house_pos + road_pos) / 2.0;
     let rotation = Quat::from_rotation_y(angle);
 
+    let driveway_road = crate::road::Road {
+        start_intersection_entity: house_intersection,
+        end_intersection_entity: road_intersection,
+        length,
+        angle,
+    };
+
     let driveway_entity = commands.spawn((
-        crate::road::Road {
-            start_intersection_entity: house_intersection,
-            end_intersection_entity: road_intersection,
-            angle,
-        },
+        driveway_road,
         Mesh3d(meshes.add(Cuboid::new(DRIVEWAY_WIDTH, DRIVEWAY_HEIGHT, length))),
         MeshMaterial3d(materials.add(driveway_color)),
         Transform::from_translation(Vec3::new(midpoint.x, DRIVEWAY_HEIGHT / 2.0, midpoint.z))
@@ -104,10 +107,11 @@ fn spawn_driveway(
 
     let driveway_entity_wrapper = RoadEntity(driveway_entity);
 
+    // Get the Road component we just created to add to the network
+    // We can safely access it since we just spawned it
     road_network.add_road(
         driveway_entity_wrapper,
-        house_intersection,
-        road_intersection,
+        &driveway_road,
     );
 
     Ok(driveway_entity_wrapper)
@@ -118,7 +122,7 @@ fn update_house(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
-    road_network: &RoadNetwork,
+    road_network: &mut RoadNetwork,
     road_query: &Query<(Entity, &Road)>,
     intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     house_entity: Entity,
@@ -141,8 +145,7 @@ fn update_house(
         
         // Get roads connected to this house from the road network
         let connected_roads = road_network
-            .adjacency
-            .get(&house_intersection)
+            .get_connected_roads(house_intersection)
             .ok_or_else(|| anyhow::anyhow!("House intersection not found in road network"))?;
 
         anyhow::ensure!(!connected_roads.is_empty(), "No roads connected to house");
@@ -189,7 +192,7 @@ pub fn update_houses(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    road_network: Res<RoadNetwork>,
+    mut road_network: ResMut<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut house_query: Query<(Entity, &mut House, &Transform)>,
@@ -206,7 +209,7 @@ pub fn update_houses(
             &mut commands,
             &mut meshes,
             &mut materials,
-            &road_network,
+            &mut road_network,
             &road_query,
             &intersection_query,
             house_entity,

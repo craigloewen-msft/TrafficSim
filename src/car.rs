@@ -141,7 +141,7 @@ pub fn spawn_car(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
-    road_network: &RoadNetwork,
+    road_network: &mut RoadNetwork,
     road_query: &Query<(Entity, &Road)>,
     intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     spawn_intersection_entity: IntersectionEntity,
@@ -222,7 +222,7 @@ pub fn spawn_cars(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
-    road_network: Res<RoadNetwork>,
+    mut road_network: ResMut<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
 ) {
@@ -237,10 +237,10 @@ pub fn spawn_cars(
         return;
     }
 
-    // Collect all intersection entities from the adjacency graph
+    // Collect all intersection entities from the road network
     let all_intersections: Vec<Entity> = road_network
-        .adjacency
-        .keys()
+        .get_all_intersections()
+        .iter()
         .map(|intersection_entity| intersection_entity.0)
         .collect();
 
@@ -263,7 +263,7 @@ pub fn spawn_cars(
             &mut commands,
             &mut meshes,
             &mut materials,
-            &road_network,
+            &mut road_network,
             &road_query,
             &intersection_query,
             spawn_intersection_entity,

@@ -4533,6 +4533,7 @@ dependencies = [
  "bevy",
  "env_logger",
  "log",
+ "petgraph",
  "rand",
 ]
 
