@@ -225,6 +225,7 @@ pub fn spawn_cars(
     road_network: Res<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
+    mut stats: ResMut<crate::SimulationStats>,
 ) {
     info!("=== SPAWNING CARS ===");
 
@@ -250,6 +251,7 @@ pub fn spawn_cars(
     }
 
     let mut rng = rand::rng();
+    let mut spawned_count = 0;
 
     for _ in 0..num_cars_to_spawn {
         // Choose a road and intersections
@@ -259,7 +261,7 @@ pub fn spawn_cars(
         let final_target_entity = *all_intersections.choose(&mut rng).unwrap();
 
         // Spawn the car entity - all ECS operations stay in the system
-        if let Err(e) = spawn_car(
+        if let Ok(_) = spawn_car(
             &mut commands,
             &mut meshes,
             &mut materials,
@@ -270,9 +272,14 @@ pub fn spawn_cars(
             road_entity,
             final_target_entity,
         ) {
-            error!("Failed to spawn car: {:#}", e);
+            spawned_count += 1;
+        } else {
+            error!("Failed to spawn car");
         }
     }
+    
+    stats.total_cars_spawned += spawned_count;
+    info!("Successfully spawned {} cars", spawned_count);
 }
 
 /// System to update car movement logic
@@ -283,6 +290,7 @@ pub fn update_cars(
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
     mut commands: Commands,
+    mut stats: ResMut<crate::SimulationStats>,
 ) {
     for (entity, mut car, mut transform) in car_query.iter_mut() {
         match car.update_car(
@@ -295,6 +303,7 @@ pub fn update_cars(
         ) {
             Ok(should_despawn) => {
                 if should_despawn {
+                    stats.total_cars_completed += 1;
                     commands.entity(entity).despawn();
                 }
             }

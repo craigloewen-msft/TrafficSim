@@ -124,6 +124,7 @@ fn update_house(
     house_entity: Entity,
     house: &mut House,
     house_entities: &[Entity],
+    stats: &mut ResMut<crate::SimulationStats>,
 ) -> Result<()> {
     let mut rng = rand::rng();
     
@@ -178,6 +179,7 @@ fn update_house(
 
         // Store the car entity in the house
         house.car = Some(car_entity);
+        stats.total_cars_spawned += 1;
         
         bevy::log::info!("House {:?} spawned car {:?} heading to house {:?}", house_entity, car_entity.0, target_house);
     }
@@ -193,6 +195,7 @@ pub fn update_houses(
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut house_query: Query<(Entity, &mut House, &Transform)>,
+    mut stats: ResMut<crate::SimulationStats>,
 ) {
     // Collect all house entities for random selection
     let house_entities: Vec<Entity> = house_query.iter().map(|(entity, _, _)| entity).collect();
@@ -212,6 +215,7 @@ pub fn update_houses(
             house_entity,
             &mut house,
             &house_entities,
+            &mut stats,
         ) {
             bevy::log::error!("Failed to update house {:?}: {:#}", house_entity, e);
         }
