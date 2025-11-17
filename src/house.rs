@@ -90,31 +90,52 @@ fn spawn_driveway(
     let midpoint = (house_pos + road_pos) / 2.0;
     let rotation = Quat::from_rotation_y(angle);
 
-    let driveway_road = crate::road::Road {
+    // Create driveway from house to road (outbound)
+    let driveway_road_out = crate::road::Road {
         start_intersection_entity: house_intersection,
         end_intersection_entity: road_intersection,
         length,
         angle,
     };
 
-    let driveway_entity = commands.spawn((
-        driveway_road,
+    let driveway_entity_out = commands.spawn((
+        driveway_road_out,
         Mesh3d(meshes.add(Cuboid::new(DRIVEWAY_WIDTH, DRIVEWAY_HEIGHT, length))),
         MeshMaterial3d(materials.add(driveway_color)),
         Transform::from_translation(Vec3::new(midpoint.x, DRIVEWAY_HEIGHT / 2.0, midpoint.z))
             .with_rotation(rotation),
     )).id();
 
-    let driveway_entity_wrapper = RoadEntity(driveway_entity);
+    let driveway_entity_wrapper_out = RoadEntity(driveway_entity_out);
 
-    // Get the Road component we just created to add to the network
-    // We can safely access it since we just spawned it
+    // Add outbound driveway to network
     road_network.add_road(
-        driveway_entity_wrapper,
-        &driveway_road,
+        driveway_entity_wrapper_out,
+        &driveway_road_out,
     );
 
-    Ok(driveway_entity_wrapper)
+    // Create driveway from road to house (inbound) - reuses same visual mesh
+    let driveway_road_in = crate::road::Road {
+        start_intersection_entity: road_intersection,
+        end_intersection_entity: house_intersection,
+        length,
+        angle: angle + std::f32::consts::PI, // Opposite direction
+    };
+
+    let driveway_entity_in = commands.spawn((
+        driveway_road_in,
+        // We don't need to render this separately, it's the same physical driveway
+    )).id();
+
+    let driveway_entity_wrapper_in = RoadEntity(driveway_entity_in);
+
+    // Add inbound driveway to network
+    road_network.add_road(
+        driveway_entity_wrapper_in,
+        &driveway_road_in,
+    );
+
+    Ok(driveway_entity_wrapper_out)
 }
 
 /// Helper function to update a single house and spawn a car if needed

@@ -13,11 +13,11 @@ pub struct CarEntity(pub Entity);
 /// Component that marks an entity as a car
 #[derive(Component)]
 pub struct Car {
-    pub speed: f32,
-    pub current_road_entity: RoadEntity, // The road entity the car is currently on
-    pub progress: f32,                   // 0.0 to 1.0 along the current road
+    pub speed: f32,                          // Speed of the car
+    pub current_road_entity: RoadEntity,     // The road entity the car is currently on
+    pub progress: f32,                       // 0.0 to 1.0 along the current road
     pub start_intersection: IntersectionEntity, // The intersection where we started on this road
-    pub path: Vec<IntersectionEntity>, // Path of intersection entities to follow (first element is next target)
+    pub path: Vec<IntersectionEntity>,       // Path of intersection entities to follow (first element is next target)
 }
 
 impl Car {
@@ -81,7 +81,8 @@ impl Car {
                 transform.translation = end_pos;
 
                 return Ok(true); // Signal that car should be despawned
-            } // Get next intersection from path (peek at the next target)
+            }
+            
             let next_intersection_entity =
                 *self.path.first().context("No next intersection in path")?;
 
@@ -93,22 +94,12 @@ impl Car {
             self.current_road_entity = next_road_entity;
             self.progress = 0.0;
 
-            // Determine direction on new road
             let (_, new_road) = road_query
                 .get(next_road_entity.0)
                 .context("Failed to query next road")?;
 
-            if new_road.start_intersection_entity == reached_intersection {
-                // Travel from start to end
-                self.start_intersection = new_road.start_intersection_entity;
-                transform.rotation = Quat::from_rotation_y(new_road.angle);
-            } else if new_road.end_intersection_entity == reached_intersection {
-                // Travel from end to start
-                self.start_intersection = new_road.end_intersection_entity;
-                transform.rotation = Quat::from_rotation_y(new_road.angle + std::f32::consts::PI);
-            } else {
-                anyhow::bail!("New road doesn't connect to current intersection");
-            }
+            self.start_intersection = new_road.start_intersection_entity;
+            transform.rotation = Quat::from_rotation_y(new_road.angle);
 
             let new_target_position = intersection_query
                 .get(next_intersection_entity.0)
@@ -152,12 +143,9 @@ pub fn spawn_car(
         .get(road_entity)
         .context("Failed to query road entity")?;
 
-    // Validate that the road is connected to the spawn intersection
-    if road.start_intersection_entity != spawn_intersection_entity
-        && road.end_intersection_entity != spawn_intersection_entity
-    {
+    if road.start_intersection_entity != spawn_intersection_entity {
         anyhow::bail!(
-            "Road {:?} is not connected to intersection {:?}",
+            "Road {:?} does not start from intersection {:?} (one-way roads)",
             road_entity,
             spawn_intersection_entity
         );
@@ -186,12 +174,7 @@ pub fn spawn_car(
         })
         .collect::<Result<Vec<_>>>()?;
 
-    // Determine rotation based on which end of the road we're starting from
-    let rotation = if road.start_intersection_entity == spawn_intersection_entity {
-        Quat::from_rotation_y(road.angle)
-    } else {
-        Quat::from_rotation_y(road.angle + std::f32::consts::PI)
-    };
+    let rotation = Quat::from_rotation_y(road.angle);
 
     // Spawn the entity with all components
     let entity = commands
@@ -228,7 +211,7 @@ pub fn spawn_cars(
 ) {
     info!("=== SPAWNING CARS ===");
 
-    let num_cars_to_spawn = 5;
+    let num_cars_to_spawn = 0;
 
     // Collect road entities from the road query
     let road_entities: Vec<Entity> = road_query.iter().map(|(entity, _)| entity).collect();

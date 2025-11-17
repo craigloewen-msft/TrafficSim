@@ -1,9 +1,10 @@
 use bevy::prelude::*;
 use petgraph::algo::astar;
-use petgraph::graph::{NodeIndex, UnGraph};
+use petgraph::graph::{NodeIndex, DiGraph};
 use petgraph::visit::EdgeRef;
 use std::collections::HashMap;
 
+use crate::car::CarEntity;
 use crate::intersection::IntersectionEntity;
 use crate::road::{Road, RoadEntity};
 
@@ -41,8 +42,8 @@ impl RoadEdge {
 /// Actual road and intersection data lives in their respective components
 #[derive(Resource)]
 pub struct RoadNetwork {
-    /// The underlying petgraph undirected graph
-    graph: UnGraph<IntersectionEntity, RoadEdge>,
+    /// The underlying petgraph directed graph (one-way roads)
+    graph: DiGraph<IntersectionEntity, RoadEdge>,
     
     /// Maps intersection entities to their node indices in the graph
     intersection_to_node: HashMap<IntersectionEntity, NodeIndex>,
@@ -53,15 +54,20 @@ pub struct RoadNetwork {
     /// Cached Dijkstra results: maps from source intersection to (distances, predecessors)
     /// This is invalidated whenever the graph structure changes
     path_cache: HashMap<IntersectionEntity, HashMap<IntersectionEntity, Vec<IntersectionEntity>>>,
+    
+    /// Maps road entities to lists of (car_entity, progress) tuples for traffic detection
+    /// This is private and should only be accessed through public methods
+    cars_on_roads: HashMap<Entity, Vec<(CarEntity, f32)>>,
 }
 
 impl Default for RoadNetwork {
     fn default() -> Self {
         Self {
-            graph: UnGraph::new_undirected(),
+            graph: DiGraph::new(),
             intersection_to_node: HashMap::new(),
             node_to_intersection: HashMap::new(),
             path_cache: HashMap::new(),
+            cars_on_roads: HashMap::new(),
         }
     }
 }
@@ -138,7 +144,6 @@ impl RoadNetwork {
                 )
             })?;
         
-        // Find edge between the two nodes
         self.graph
             .edges(*from_node)
             .find(|edge| edge.target() == *to_node)
@@ -238,5 +243,48 @@ impl RoadNetwork {
             .collect();
         
         Some(connections)
+    }
+    
+    // Car tracking methods for traffic detection
+    
+    /// Clear all car tracking data (called at start of each frame)
+    pub fn clear_car_tracking(&mut self) {
+        self.cars_on_roads.clear();
+    }
+
+    /// Register a car on a road for traffic tracking
+    /// This should be called once per frame for each car before querying traffic ahead
+    pub fn register_car_on_road(&mut self, road_entity: RoadEntity, car_entity: CarEntity, progress: f32) {
+        self.cars_on_roads
+            .entry(road_entity.0)
+            .or_insert_with(Vec::new)
+            .push((car_entity, progress));
+    }
+
+    /// Find the car directly ahead on the same road
+    /// Returns Some((car_entity, progress)) of the nearest car ahead, or None if no car is ahead
+    /// 
+    /// # Arguments
+    /// * `road_entity` - The road to check for cars
+    /// * `current_car` - The car entity making the query (to exclude from results)
+    /// * `current_progress` - The current progress (0.0-1.0) of the querying car along the road
+    pub fn find_car_ahead_on_road(
+        &self, 
+        road_entity: RoadEntity, 
+        current_car: CarEntity, 
+        current_progress: f32
+    ) -> Option<(CarEntity, f32)> {
+        let cars_on_road = self.cars_on_roads.get(&road_entity.0)?;
+        
+        // Find all cars ahead (with higher progress values)
+        let mut cars_ahead: Vec<(CarEntity, f32)> = cars_on_road
+            .iter()
+            .filter(|(car, progress)| car.0 != current_car.0 && *progress > current_progress)
+            .copied()
+            .collect();
+        
+        // Sort by progress and return the closest one (smallest progress value that's still ahead)
+        cars_ahead.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        cars_ahead.first().copied()
     }
 }

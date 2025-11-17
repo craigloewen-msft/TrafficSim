@@ -129,21 +129,12 @@ pub fn spawn_roads(
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut road_network: ResMut<RoadNetwork>,
 ) {
-    // Define main road intersection positions (these form the primary road network)
+    // Define main road intersection positions - simplified loop structure
     let road_positions = vec![
-        // Row 1 (top)
-        Vec3::new(-20.0, 0.0, -20.0),  // 0
-        Vec3::new(-6.0, 0.0, -20.0),   // 1
-        Vec3::new(8.0, 0.0, -20.0),    // 2
-        Vec3::new(22.0, 0.0, -20.0),   // 3
-        // Row 2 (middle)
-        Vec3::new(-20.0, 0.0, 0.0),    // 4
-        Vec3::new(-6.0, 0.0, 0.0),     // 5
-        Vec3::new(8.0, 0.0, 0.0),      // 6
-        Vec3::new(22.0, 0.0, 0.0),     // 7
-        // Row 3 (bottom)
-        Vec3::new(-20.0, 0.0, 20.0),   // 8
-        Vec3::new(-6.0, 0.0, 20.0),    // 9
+        Vec3::new(0.0, 0.0, 20.0),    // 0 - Bottom main intersection
+        Vec3::new(0.0, 0.0, -20.0),   // 1 - Top intersection
+        Vec3::new(-10.0, 0.0, 0.0),   // 2 - Left middle intersection
+        Vec3::new(10.0, 0.0, 0.0),    // 3 - Right middle intersection
     ];
 
     // First, create all road intersections
@@ -161,29 +152,16 @@ pub fn spawn_roads(
         intersection_entities.push(intersection_entity);
     }
 
-    // Create road connections between intersections
-    // Grid connections only - horizontal and vertical
+    // Create road connections - a simple loop
+    // Bottom -> Top (straight up)
+    // Top -> Left middle -> Bottom (left path back)
+    // Top -> Right middle -> Bottom (right path back)
     let road_connections = vec![
-        // Row 1 horizontal
-        (0, 1), (1, 2), (2, 3),
-        // Row 2 horizontal
-        (4, 5), (5, 6), (6, 7),
-        // Row 3 horizontal
-        (8, 9),
-        
-        // Column 1 vertical
-        (0, 4), (4, 8),
-        // Column 2 vertical
-        (1, 5), (5, 9),
-        // Column 3 vertical
-        (2, 6),
-        // Column 4 vertical
-        (3, 7),
-        
-        // Some diagonal connections for interest
-        (0, 5), (1, 6), (2, 7),
-        (4, 9), (5, 6), (1, 4),
-        (2, 5), (6, 9),
+        (0, 1),  // Bottom to Top
+        (1, 2),  // Top to Left middle
+        (2, 0),  // Left middle to Bottom
+        (1, 3),  // Top to Right middle
+        (3, 0),  // Right middle to Bottom
     ];
 
     for (start_idx, end_idx) in road_connections {
@@ -192,7 +170,6 @@ pub fn spawn_roads(
         let start_intersection_entity = intersection_entities[start_idx];
         let end_intersection_entity = intersection_entities[end_idx];
 
-        // Create and spawn road using positions directly (intersections not queryable yet)
         if let Err(e) = spawn_road(
             &mut commands,
             &mut meshes,
@@ -207,26 +184,16 @@ pub fn spawn_roads(
         }
     }
 
-    // Now spawn houses with driveways connecting to nearby road intersections
-    // Define house positions and which road intersection they connect to
+    // Spawn 5 houses all connected to the bottom intersection
     let house_configs = vec![
-        // Houses along the top road (offset to the north)
-        (Vec3::new(-20.0, 0.0, -25.0), 0),  // House north of intersection 0
-        (Vec3::new(-6.0, 0.0, -25.0), 1),   // House north of intersection 1
-        (Vec3::new(8.0, 0.0, -25.0), 2),    // House north of intersection 2
-        (Vec3::new(22.0, 0.0, -25.0), 3),   // House north of intersection 3
-        
-        // Houses along the left side (offset to the west)
-        (Vec3::new(-25.0, 0.0, 0.0), 4),    // House west of intersection 4
-        (Vec3::new(-25.0, 0.0, 20.0), 8),   // House west of intersection 8
-        
-        // Houses along the right side (offset to the east)
-        (Vec3::new(27.0, 0.0, -20.0), 3),   // House east of intersection 3
-        (Vec3::new(27.0, 0.0, 0.0), 7),     // House east of intersection 7
-        
-        // Houses along the middle (offset to the south)
-        (Vec3::new(-6.0, 0.0, 5.0), 5),     // House south of intersection 5
-        (Vec3::new(8.0, 0.0, 5.0), 6),      // House south of intersection 6
+        (Vec3::new(-8.0, 0.0, 25.0), 0),   // House 1 - South of bottom intersection
+        (Vec3::new(-4.0, 0.0, 25.0), 0),   // House 2 - South of bottom intersection
+        (Vec3::new(0.0, 0.0, 26.0), 0),    // House 3 - South of bottom intersection
+        (Vec3::new(4.0, 0.0, 25.0), 0),    // House 4 - South of bottom intersection
+        (Vec3::new(8.0, 0.0, 25.0), 0),    // House 5 - South of bottom intersection
+        (Vec3::new(0.0, 0.0, -25.0), 1),    // House 6 - South of top intersection
+        (Vec3::new(-4.0, 0.0, -25.0), 1),    // House 6 - South of top intersection
+        (Vec3::new(4.0, 0.0, -25.0), 1),    // House 6 - South of top intersection
     ];
 
     for (house_pos, road_intersection_idx) in house_configs {
