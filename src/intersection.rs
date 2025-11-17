@@ -44,7 +44,7 @@ pub fn spawn_intersection(
         .id();
 
     let intersection_entity = IntersectionEntity(entity);
-    
+
     // Always add to road network
     road_network.add_intersection(intersection_entity);
 

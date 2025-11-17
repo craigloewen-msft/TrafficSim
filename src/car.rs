@@ -116,7 +116,10 @@ impl Car {
                 .1
                 .translation;
 
-            info!("Car {:?} moving to new position: {:.2?}", car_entity, new_target_position);
+            info!(
+                "Car {:?} moving to new position: {:.2?}",
+                car_entity, new_target_position
+            );
         } else {
             // Interpolate position along current road
             transform.translation = start_pos.lerp(end_pos, self.progress);
@@ -277,7 +280,7 @@ pub fn spawn_cars(
             error!("Failed to spawn car");
         }
     }
-    
+
     stats.total_cars_spawned += spawned_count;
     info!("Successfully spawned {} cars", spawned_count);
 }

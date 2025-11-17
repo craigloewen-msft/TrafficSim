@@ -1,7 +1,7 @@
 use anyhow::Result;
 use bevy::prelude::*;
 
-use crate::intersection::{IntersectionEntity};
+use crate::intersection::IntersectionEntity;
 use crate::road_network::RoadNetwork;
 
 // Import the spawn helper function
@@ -18,7 +18,7 @@ pub struct Road {
     pub end_intersection_entity: IntersectionEntity,
     // pub lane_count: u32,
     // pub speed_limit: f32, // m/s
-    pub angle: f32,       // Rotation angle in radians (Y-axis rotation)
+    pub angle: f32, // Rotation angle in radians (Y-axis rotation)
 }
 
 impl Road {}
@@ -88,21 +88,11 @@ pub fn spawn_road_at_positions(
     start_pos: Vec3,
     end_pos: Vec3,
 ) -> Result<RoadEntity> {
-    let start_intersection_entity = spawn_intersection(
-        commands,
-        meshes,
-        materials,
-        road_network,
-        start_pos,
-    )?;
+    let start_intersection_entity =
+        spawn_intersection(commands, meshes, materials, road_network, start_pos)?;
 
-    let end_intersection_entity = spawn_intersection(
-        commands,
-        meshes,
-        materials,
-        road_network,
-        end_pos,
-    )?;
+    let end_intersection_entity =
+        spawn_intersection(commands, meshes, materials, road_network, end_pos)?;
 
     // Create and spawn road using positions directly
     let road_entity = spawn_road(
@@ -129,18 +119,18 @@ pub fn spawn_roads(
     // Define main road intersection positions (these form the primary road network)
     let road_positions = vec![
         // Row 1 (top)
-        Vec3::new(-20.0, 0.0, -20.0),  // 0
-        Vec3::new(-6.0, 0.0, -20.0),   // 1
-        Vec3::new(8.0, 0.0, -20.0),    // 2
-        Vec3::new(22.0, 0.0, -20.0),   // 3
+        Vec3::new(-20.0, 0.0, -20.0), // 0
+        Vec3::new(-6.0, 0.0, -20.0),  // 1
+        Vec3::new(8.0, 0.0, -20.0),   // 2
+        Vec3::new(22.0, 0.0, -20.0),  // 3
         // Row 2 (middle)
-        Vec3::new(-20.0, 0.0, 0.0),    // 4
-        Vec3::new(-6.0, 0.0, 0.0),     // 5
-        Vec3::new(8.0, 0.0, 0.0),      // 6
-        Vec3::new(22.0, 0.0, 0.0),     // 7
+        Vec3::new(-20.0, 0.0, 0.0), // 4
+        Vec3::new(-6.0, 0.0, 0.0),  // 5
+        Vec3::new(8.0, 0.0, 0.0),   // 6
+        Vec3::new(22.0, 0.0, 0.0),  // 7
         // Row 3 (bottom)
-        Vec3::new(-20.0, 0.0, 20.0),   // 8
-        Vec3::new(-6.0, 0.0, 20.0),    // 9
+        Vec3::new(-20.0, 0.0, 20.0), // 8
+        Vec3::new(-6.0, 0.0, 20.0),  // 9
     ];
 
     // First, create all road intersections
@@ -153,7 +143,8 @@ pub fn spawn_roads(
             &mut materials,
             &mut road_network,
             *position,
-        ).expect("Failed to spawn intersection");
+        )
+        .expect("Failed to spawn intersection");
 
         intersection_entities.push(intersection_entity);
     }
@@ -162,25 +153,34 @@ pub fn spawn_roads(
     // Grid connections only - horizontal and vertical
     let road_connections = vec![
         // Row 1 horizontal
-        (0, 1), (1, 2), (2, 3),
+        (0, 1),
+        (1, 2),
+        (2, 3),
         // Row 2 horizontal
-        (4, 5), (5, 6), (6, 7),
+        (4, 5),
+        (5, 6),
+        (6, 7),
         // Row 3 horizontal
         (8, 9),
-        
         // Column 1 vertical
-        (0, 4), (4, 8),
+        (0, 4),
+        (4, 8),
         // Column 2 vertical
-        (1, 5), (5, 9),
+        (1, 5),
+        (5, 9),
         // Column 3 vertical
         (2, 6),
         // Column 4 vertical
         (3, 7),
-        
         // Some diagonal connections for interest
-        (0, 5), (1, 6), (2, 7),
-        (4, 9), (5, 6), (1, 4),
-        (2, 5), (6, 9),
+        (0, 5),
+        (1, 6),
+        (2, 7),
+        (4, 9),
+        (5, 6),
+        (1, 4),
+        (2, 5),
+        (6, 9),
     ];
 
     for (start_idx, end_idx) in road_connections {
@@ -208,22 +208,19 @@ pub fn spawn_roads(
     // Define house positions and which road intersection they connect to
     let house_configs = vec![
         // Houses along the top road (offset to the north)
-        (Vec3::new(-20.0, 0.0, -25.0), 0),  // House north of intersection 0
-        (Vec3::new(-6.0, 0.0, -25.0), 1),   // House north of intersection 1
-        (Vec3::new(8.0, 0.0, -25.0), 2),    // House north of intersection 2
-        (Vec3::new(22.0, 0.0, -25.0), 3),   // House north of intersection 3
-        
+        (Vec3::new(-20.0, 0.0, -25.0), 0), // House north of intersection 0
+        (Vec3::new(-6.0, 0.0, -25.0), 1),  // House north of intersection 1
+        (Vec3::new(8.0, 0.0, -25.0), 2),   // House north of intersection 2
+        (Vec3::new(22.0, 0.0, -25.0), 3),  // House north of intersection 3
         // Houses along the left side (offset to the west)
-        (Vec3::new(-25.0, 0.0, 0.0), 4),    // House west of intersection 4
-        (Vec3::new(-25.0, 0.0, 20.0), 8),   // House west of intersection 8
-        
+        (Vec3::new(-25.0, 0.0, 0.0), 4), // House west of intersection 4
+        (Vec3::new(-25.0, 0.0, 20.0), 8), // House west of intersection 8
         // Houses along the right side (offset to the east)
-        (Vec3::new(27.0, 0.0, -20.0), 3),   // House east of intersection 3
-        (Vec3::new(27.0, 0.0, 0.0), 7),     // House east of intersection 7
-        
+        (Vec3::new(27.0, 0.0, -20.0), 3), // House east of intersection 3
+        (Vec3::new(27.0, 0.0, 0.0), 7),   // House east of intersection 7
         // Houses along the middle (offset to the south)
-        (Vec3::new(-6.0, 0.0, 5.0), 5),     // House south of intersection 5
-        (Vec3::new(8.0, 0.0, 5.0), 6),      // House south of intersection 6
+        (Vec3::new(-6.0, 0.0, 5.0), 5), // House south of intersection 5
+        (Vec3::new(8.0, 0.0, 5.0), 6),  // House south of intersection 6
     ];
 
     for (house_pos, road_intersection_idx) in house_configs {

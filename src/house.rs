@@ -1,9 +1,9 @@
-use bevy::prelude::*;
 use anyhow::Result;
+use bevy::prelude::*;
 use rand::seq::IndexedRandom;
 
-use crate::car::{Car, CarEntity, spawn_car};
-use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
+use crate::car::{spawn_car, Car, CarEntity};
+use crate::intersection::{spawn_intersection, Intersection, IntersectionEntity};
 use crate::road::{Road, RoadEntity};
 use crate::road_network::RoadNetwork;
 
@@ -22,13 +22,8 @@ pub fn spawn_house_intersection(
     const HOUSE_SIZE: f32 = 1.0;
     let house_color = Color::srgb(0.7, 0.6, 0.4);
 
-    let intersection_entity = spawn_intersection(
-        commands,
-        meshes,
-        materials,
-        road_network,
-        position,
-    )?;
+    let intersection_entity =
+        spawn_intersection(commands, meshes, materials, road_network, position)?;
 
     commands.entity(intersection_entity.0).insert((
         House { car: None },
@@ -48,13 +43,8 @@ pub fn spawn_house_with_driveway(
     road_intersection_entity: IntersectionEntity,
     road_intersection_position: Vec3,
 ) -> Result<IntersectionEntity> {
-    let house_intersection_entity = spawn_house_intersection(
-        commands,
-        meshes,
-        materials,
-        road_network,
-        house_position,
-    )?;
+    let house_intersection_entity =
+        spawn_house_intersection(commands, meshes, materials, road_network, house_position)?;
 
     spawn_driveway(
         commands,
@@ -90,17 +80,19 @@ fn spawn_driveway(
     let midpoint = (house_pos + road_pos) / 2.0;
     let rotation = Quat::from_rotation_y(angle);
 
-    let driveway_entity = commands.spawn((
-        crate::road::Road {
-            start_intersection_entity: house_intersection,
-            end_intersection_entity: road_intersection,
-            angle,
-        },
-        Mesh3d(meshes.add(Cuboid::new(DRIVEWAY_WIDTH, DRIVEWAY_HEIGHT, length))),
-        MeshMaterial3d(materials.add(driveway_color)),
-        Transform::from_translation(Vec3::new(midpoint.x, DRIVEWAY_HEIGHT / 2.0, midpoint.z))
-            .with_rotation(rotation),
-    )).id();
+    let driveway_entity = commands
+        .spawn((
+            crate::road::Road {
+                start_intersection_entity: house_intersection,
+                end_intersection_entity: road_intersection,
+                angle,
+            },
+            Mesh3d(meshes.add(Cuboid::new(DRIVEWAY_WIDTH, DRIVEWAY_HEIGHT, length))),
+            MeshMaterial3d(materials.add(driveway_color)),
+            Transform::from_translation(Vec3::new(midpoint.x, DRIVEWAY_HEIGHT / 2.0, midpoint.z))
+                .with_rotation(rotation),
+        ))
+        .id();
 
     let driveway_entity_wrapper = RoadEntity(driveway_entity);
 
@@ -127,7 +119,7 @@ fn update_house(
     stats: &mut ResMut<crate::SimulationStats>,
 ) -> Result<()> {
     let mut rng = rand::rng();
-    
+
     // Check if this house already has a car
     if let Some(car_entity) = house.car {
         if commands.get_entity(car_entity.0).is_err() {
@@ -139,7 +131,7 @@ fn update_house(
     if house.car.is_none() {
         // Find a road connected to this house intersection
         let house_intersection = IntersectionEntity(house_entity);
-        
+
         // Get roads connected to this house from the road network
         let connected_roads = road_network
             .adjacency
@@ -180,8 +172,13 @@ fn update_house(
         // Store the car entity in the house
         house.car = Some(car_entity);
         stats.total_cars_spawned += 1;
-        
-        bevy::log::info!("House {:?} spawned car {:?} heading to house {:?}", house_entity, car_entity.0, target_house);
+
+        bevy::log::info!(
+            "House {:?} spawned car {:?} heading to house {:?}",
+            house_entity,
+            car_entity.0,
+            target_house
+        );
     }
 
     Ok(())
@@ -199,7 +196,7 @@ pub fn update_houses(
 ) {
     // Collect all house entities for random selection
     let house_entities: Vec<Entity> = house_query.iter().map(|(entity, _, _)| entity).collect();
-    
+
     if house_entities.len() < 2 {
         return; // Need at least 2 houses for spawning cars
     }

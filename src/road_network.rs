@@ -18,7 +18,7 @@ impl RoadNetwork {
     pub fn add_intersection(&mut self, intersection_entity: IntersectionEntity) {
         self.adjacency
             .entry(intersection_entity)
-            .or_insert_with(Vec::new);
+            .or_default();
     }
 
     /// Adds a road to the network and updates the graph adjacency
@@ -31,12 +31,12 @@ impl RoadNetwork {
         // Update adjacency list (bidirectional)
         self.adjacency
             .entry(start_intersection_entity)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((road_entity, end_intersection_entity));
 
         self.adjacency
             .entry(end_intersection_entity)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push((road_entity, start_intersection_entity));
     }
 
