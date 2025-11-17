@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 use bevy::log::{error, info, warn};
 use bevy::prelude::*;
 use rand::seq::IndexedRandom;
+use rand::Rng;
 
 /// Wrapper type for car entities to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -176,11 +177,15 @@ pub fn spawn_car(
 
     let rotation = Quat::from_rotation_y(road.angle);
 
+    // Generate random speed for variety - some cars faster, some slower
+    let mut rng = rand::rng();
+    let random_speed = rng.random_range(2.0..6.0); // Speed range from 2.0 to 6.0
+
     // Spawn the entity with all components
     let entity = commands
         .spawn(CarBundle {
             car: Car {
-                speed: 4.0,
+                speed: random_speed,
                 current_road_entity: RoadEntity(road_entity),
                 progress: 0.0,
                 start_intersection: spawn_intersection_entity,
