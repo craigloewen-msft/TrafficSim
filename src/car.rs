@@ -137,7 +137,7 @@ pub struct CarBundle {
 
 /// Helper function to spawn a single car
 /// This is called by the system and can take any system parameters it needs
-fn spawn_car(
+pub fn spawn_car(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
