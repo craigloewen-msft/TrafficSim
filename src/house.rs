@@ -116,7 +116,7 @@ fn update_house(
     house_entity: Entity,
     house: &mut House,
     house_entities: &[Entity],
-    stats: &mut ResMut<crate::SimulationStats>,
+    stats: &mut ResMut<crate::stats::SimulationStats>,
 ) -> Result<()> {
     let mut rng = rand::rng();
 
@@ -192,7 +192,7 @@ pub fn update_houses(
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut house_query: Query<(Entity, &mut House, &Transform)>,
-    mut stats: ResMut<crate::SimulationStats>,
+    mut stats: ResMut<crate::stats::SimulationStats>,
 ) {
     // Collect all house entities for random selection
     let house_entities: Vec<Entity> = house_query.iter().map(|(entity, _, _)| entity).collect();

@@ -16,9 +16,7 @@ pub struct RoadNetwork {
 impl RoadNetwork {
     /// Adds an intersection to the network graph
     pub fn add_intersection(&mut self, intersection_entity: IntersectionEntity) {
-        self.adjacency
-            .entry(intersection_entity)
-            .or_default();
+        self.adjacency.entry(intersection_entity).or_default();
     }
 
     /// Adds a road to the network and updates the graph adjacency

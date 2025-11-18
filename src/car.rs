@@ -228,7 +228,7 @@ pub fn spawn_cars(
     road_network: Res<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
-    mut stats: ResMut<crate::SimulationStats>,
+    mut stats: ResMut<crate::stats::SimulationStats>,
 ) {
     info!("=== SPAWNING CARS ===");
 
@@ -293,7 +293,7 @@ pub fn update_cars(
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
     mut commands: Commands,
-    mut stats: ResMut<crate::SimulationStats>,
+    mut stats: ResMut<crate::stats::SimulationStats>,
 ) {
     for (entity, mut car, mut transform) in car_query.iter_mut() {
         match car.update_car(
