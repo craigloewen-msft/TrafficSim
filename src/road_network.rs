@@ -50,7 +50,7 @@ pub struct RoadNetwork {
     /// This is invalidated whenever the graph structure changes
     path_cache: HashMap<IntersectionEntity, HashMap<IntersectionEntity, Vec<IntersectionEntity>>>,
 
-    /// Maps road entities to lists of (car_entity, progress) tuples for traffic detection
+    /// Maps road entities to lists of (car_entity, distance) tuples for traffic detection
     /// This is private and should only be accessed through public methods
     cars_on_roads: HashMap<RoadEntity, BTreeMap<OrderedFloat<f32>, CarEntity>>,
 }
@@ -255,7 +255,7 @@ impl RoadNetwork {
         car_entity: &CarEntity,
         remove_pos: bool,
         prev_road_entity_option: Option<RoadEntity>,
-        prev_progress: OrderedFloat<f32>,
+        prev_distance: OrderedFloat<f32>,
     ) -> Result<()> {
         let car_active_road = car.current_road_entity;
 
@@ -264,7 +264,7 @@ impl RoadNetwork {
             self.cars_on_roads
                 .get_mut(&car_active_road)
                 .context("Couldn't find road list to delete")?
-                .retain(|_progress, visitor_entity| *visitor_entity != *car_entity);
+                .retain(|_distance, visitor_entity| *visitor_entity != *car_entity);
         } else {
             // Update car position: remove old, insert new
             if let Some(prev_road_entity) = prev_road_entity_option {
@@ -273,7 +273,7 @@ impl RoadNetwork {
                     .cars_on_roads
                     .get_mut(&prev_road_entity)
                     .context("Couldn't get old road map")?
-                    .remove(&prev_progress);
+                    .remove(&prev_distance);
             }
 
             // Insert at new position
@@ -282,33 +282,32 @@ impl RoadNetwork {
                 .entry(car_active_road)
                 .or_insert_with(BTreeMap::new);
 
-            car_map.insert(car.progress, *car_entity);
+            car_map.insert(car.distance_along_road, *car_entity);
         }
 
         Ok(())
     }
 
     /// Find the car directly ahead on the same road
-    /// Returns Some((car_entity, progress)) of the nearest car ahead, or None if no car is ahead
+    /// Returns Some((distance, car_entity)) of the nearest car ahead, or None if no car is ahead
     ///
     /// # Arguments
     /// * `road_entity` - The road to check for cars
-    /// * `current_car` - The car entity making the query (to exclude from results)
-    /// * `current_progress` - The current progress (0.0-1.0) of the querying car along the road
+    /// * `current_distance` - The current distance traveled along the road in world units
     pub fn find_car_ahead_on_road(
         &self,
         road_entity: RoadEntity,
-        current_progress: &OrderedFloat<f32>,
+        current_distance: &OrderedFloat<f32>,
     ) -> Result<Option<(&OrderedFloat<f32>, CarEntity)>> {
         let car_map = self
             .cars_on_roads
             .get(&road_entity)
             .context("Road has no car list")?;
 
-        // Get first car with progress > current_progress
+        // Get first car with distance > current_distance
         Ok(car_map
-            .range((Bound::Excluded(current_progress), Bound::Unbounded))
+            .range((Bound::Excluded(current_distance), Bound::Unbounded))
             .next()
-            .map(|(progress, car)| (progress, *car)))
+            .map(|(distance, car)| (distance, *car)))
     }
 }

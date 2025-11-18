@@ -8,6 +8,9 @@ use ordered_float::OrderedFloat;
 use rand::seq::IndexedRandom;
 use rand::Rng;
 
+/// Length of a car in world units
+pub const CAR_LENGTH: f32 = 0.5;
+
 /// Wrapper type for car entities to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CarEntity(pub Entity);
@@ -17,7 +20,7 @@ pub struct CarEntity(pub Entity);
 pub struct Car {
     pub speed: f32,                             // Speed of the car
     pub current_road_entity: RoadEntity,        // The road entity the car is currently on
-    pub progress: OrderedFloat<f32>,            // 0.0 to 1.0 along the current road
+    pub distance_along_road: OrderedFloat<f32>, // Distance traveled along the current road in world units
     pub start_intersection: IntersectionEntity, // The intersection where we started on this road
     pub path: Vec<IntersectionEntity>, // Path of intersection entities to follow (first element is next target)
 }
@@ -66,32 +69,33 @@ impl Car {
         let road_length = current_road_queried.1.length;
 
         let prev_road_entity = self.current_road_entity;
-        let prev_progress = self.progress;
+        let prev_distance = self.distance_along_road;
 
         let ahead_car_option = road_network
-            .find_car_ahead_on_road(self.current_road_entity, &self.progress)
+            .find_car_ahead_on_road(self.current_road_entity, &self.distance_along_road)
             .context("Error on ahead car")?;
 
-        // Update progress along the road
-        let mut progress_delta = (self.speed / road_length) * delta_secs;
+        // Update distance along the road
+        let mut distance_delta = self.speed * delta_secs;
 
         if let Some(ahead_car) = ahead_car_option {
-            let ahead_car_progress_diff = ahead_car.0 - self.progress;
-            if ahead_car_progress_diff <= OrderedFloat(progress_delta) {
-                progress_delta = 0.0;
+            let ahead_car_distance_diff = ahead_car.0 - self.distance_along_road;
+            let safe_following_distance = CAR_LENGTH * 1.5;
+            if ahead_car_distance_diff <= OrderedFloat(distance_delta + safe_following_distance) {
+                distance_delta = 0.0;
             }
         }
 
-        self.progress += progress_delta;
+        self.distance_along_road += distance_delta;
 
         // Check if we've reached the end of the current road
-        if self.progress >= OrderedFloat(1.0) {
+        if self.distance_along_road >= OrderedFloat(road_length) {
             // Remove the intersection we just reached from the path
             let reached_intersection = self.path.remove(0);
 
             if self.path.is_empty() {
                 info!("Car {:?} reached final destination", car_entity);
-                self.progress = OrderedFloat(1.0);
+                self.distance_along_road = OrderedFloat(road_length);
                 transform.translation = end_pos;
 
                 road_network
@@ -100,7 +104,7 @@ impl Car {
                         car_entity,
                         true,
                         Some(prev_road_entity),
-                        prev_progress,
+                        prev_distance,
                     )
                     .context("Failed to update car position")?;
 
@@ -116,7 +120,7 @@ impl Car {
                 .context("No road found between current and next intersection")?;
 
             self.current_road_entity = next_road_entity;
-            self.progress = OrderedFloat(0.0);
+            self.distance_along_road = OrderedFloat(0.0);
 
             let (_, new_road) = road_query
                 .get(next_road_entity.0)
@@ -137,7 +141,8 @@ impl Car {
             );
         } else {
             // Interpolate position along current road
-            transform.translation = start_pos.lerp(end_pos, self.progress.into_inner());
+            let progress_ratio = self.distance_along_road.into_inner() / road_length;
+            transform.translation = start_pos.lerp(end_pos, progress_ratio);
         }
 
         road_network
@@ -146,7 +151,7 @@ impl Car {
                 car_entity,
                 false,
                 Some(prev_road_entity),
-                prev_progress,
+                prev_distance,
             )
             .context("Failed to update car position")?;
 
@@ -220,7 +225,7 @@ pub fn spawn_car(
     let car = Car {
         speed: random_speed,
         current_road_entity: RoadEntity(road_entity),
-        progress: OrderedFloat(0.0),
+        distance_along_road: OrderedFloat(0.0),
         start_intersection: spawn_intersection_entity,
         path,
     };
@@ -231,7 +236,7 @@ pub fn spawn_car(
     let entity = commands
         .spawn(CarBundle {
             car: car,
-            mesh: Mesh3d(meshes.add(Cuboid::new(0.3, 0.2, 0.5))),
+            mesh: Mesh3d(meshes.add(Cuboid::new(0.3, 0.2, CAR_LENGTH))),
             material: MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))),
             transform: Transform::from_translation(spawn_pos).with_rotation(rotation),
         })
