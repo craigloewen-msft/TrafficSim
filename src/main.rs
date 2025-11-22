@@ -12,6 +12,7 @@ use bevy::log::LogPlugin;
 use car::CarPlugin;
 use house::HousePlugin;
 use interface::InterfacePlugin;
+use intersection::IntersectionPlugin;
 use road::RoadPlugin;
 use world::WorldPlugin;
 
@@ -34,7 +35,7 @@ fn main() {
                 }),
         )
         // Add our custom plugins for each game concept
-        .add_plugins((WorldPlugin, RoadPlugin, CarPlugin, HousePlugin, InterfacePlugin))
+        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, InterfacePlugin))
         .add_systems(Update, handle_input)
         .run();
 }

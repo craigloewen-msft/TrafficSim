@@ -35,7 +35,7 @@ impl Car {
         delta_secs: f32,
         road_network: &mut RoadNetwork,
         road_query: &Query<(Entity, &Road)>,
-        intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
+        intersection_query: &mut Query<(&mut Intersection, &Transform), Without<Car>>,
     ) -> Result<bool> {
         // Check if we've reached the final destination
         if self.path.is_empty() {
@@ -58,12 +58,12 @@ impl Car {
             .get(self.start_intersection.0)
             .context("Start intersection not found")?;
 
-        let target_intersection_transform = intersection_query
+        let (_, target_intersection_transform) = intersection_query
             .get(target_intersection_entity.0)
             .context("Target intersection not found")?;
 
         let start_pos = start_intersection_transform.1.translation;
-        let end_pos = target_intersection_transform.1.translation;
+        let end_pos = target_intersection_transform.translation;
 
         // Calculate road length
         let road_length = current_road_queried.1.length;
@@ -86,12 +86,34 @@ impl Car {
             }
         }
 
+        // Check if we're approaching the end of the road (near intersection)
+        const INTERSECTION_APPROACH_DISTANCE: f32 = 1.0; // Distance from intersection to start checking
+        let distance_to_intersection = road_length - self.distance_along_road.into_inner();
+        
+        // If we're close to the intersection, check if we can proceed (this handles lock acquisition and wait time)
+        if distance_to_intersection <= INTERSECTION_APPROACH_DISTANCE {
+            let (mut target_intersection, _) = intersection_query
+                .get_mut(target_intersection_entity.0)
+                .context("Failed to get mutable intersection")?;
+            
+            if !target_intersection.can_proceed(*car_entity) {
+                // Must wait at the intersection (acquiring lock or waiting minimum time)
+                distance_delta = 0.0;
+            }
+        }
+
         self.distance_along_road += distance_delta;
 
         // Check if we've reached the end of the current road
         if self.distance_along_road >= OrderedFloat(road_length) {
             // Remove the intersection we just reached from the path
             let reached_intersection = self.path.remove(0);
+
+            // Release the intersection lock since we've passed through
+            let (mut reached_intersection_mut, _) = intersection_query
+                .get_mut(reached_intersection.0)
+                .context("Failed to get reached intersection")?;
+            reached_intersection_mut.release(*car_entity);
 
             if self.path.is_empty() {
                 info!("Car {:?} reached final destination", car_entity);
@@ -321,7 +343,7 @@ pub fn update_cars(
     time: Res<Time>,
     mut road_network: ResMut<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
-    intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
+    mut intersection_query: Query<(&mut Intersection, &Transform), Without<Car>>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
     mut commands: Commands,
 ) {
@@ -332,7 +354,7 @@ pub fn update_cars(
             time.delta_secs(),
             &mut road_network,
             &road_query,
-            &intersection_query,
+            &mut intersection_query,
         ) {
             Ok(should_despawn) => {
                 if should_despawn {
