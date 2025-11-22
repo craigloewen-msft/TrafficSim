@@ -11,6 +11,22 @@ use rand::Rng;
 /// Length of a car in world units
 pub const CAR_LENGTH: f32 = 0.5;
 
+/// Result of a car update indicating what action should be taken
+#[derive(Debug)]
+pub enum CarUpdateResult {
+    Continue,                        // Car continues moving
+    Despawn,                         // Car should be despawned
+    ArrivedAtDestination(IntersectionEntity), // Car arrived at destination
+}
+
+/// Component to mark that a car has arrived at its destination
+/// This is used to communicate with factory systems
+#[derive(Component)]
+pub struct ArrivedAtDestination {
+    pub destination: IntersectionEntity,
+    pub origin_house: Option<IntersectionEntity>,
+}
+
 /// Wrapper type for car entities to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CarEntity(pub Entity);
@@ -23,11 +39,12 @@ pub struct Car {
     pub distance_along_road: OrderedFloat<f32>, // Distance traveled along the current road in world units
     pub start_intersection: IntersectionEntity, // The intersection where we started on this road
     pub path: Vec<IntersectionEntity>, // Path of intersection entities to follow (first element is next target)
+    pub origin_house: Option<IntersectionEntity>, // The house where this car originated (for factory return trips)
 }
 
 impl Car {
     /// Update car movement logic with proper error handling
-    /// Returns `true` if the car should be despawned (reached destination or error)
+    /// Returns CarUpdateResult indicating what action should be taken with the car
     pub fn update_car(
         &mut self,
         car_entity: &CarEntity,
@@ -36,10 +53,10 @@ impl Car {
         road_network: &mut RoadNetwork,
         road_query: &Query<(Entity, &Road)>,
         intersection_query: &mut Query<(&mut Intersection, &Transform), Without<Car>>,
-    ) -> Result<bool> {
+    ) -> Result<CarUpdateResult> {
         // Check if we've reached the final destination
         if self.path.is_empty() {
-            return Ok(true); // Signal that car should be despawned
+            return Ok(CarUpdateResult::Despawn); // Signal that car should be despawned
         }
 
         // Get the current road
@@ -130,7 +147,14 @@ impl Car {
                     )
                     .context("Failed to update car position")?;
 
-                return Ok(true); // Signal that car should be despawned
+                // Check if we arrived at a factory and have an origin house
+                if let Some(_origin) = self.origin_house {
+                    // This car came from a house, so the destination is a factory
+                    return Ok(CarUpdateResult::ArrivedAtDestination(reached_intersection));
+                } else {
+                    // Normal despawn (either from factory back to house, or other scenarios)
+                    return Ok(CarUpdateResult::Despawn);
+                }
             }
 
             let next_intersection_entity =
@@ -178,7 +202,7 @@ impl Car {
             )
             .context("Failed to update car position")?;
 
-        Ok(false) // Car continues to exist
+        Ok(CarUpdateResult::Continue) // Car continues to exist
     }
 }
 
@@ -203,6 +227,7 @@ pub fn spawn_car(
     spawn_intersection_entity: IntersectionEntity,
     road_entity: Entity,
     final_target_entity: Entity,
+    origin_house: Option<IntersectionEntity>,
 ) -> Result<CarEntity> {
     let (_, road) = road_query
         .get(road_entity)
@@ -251,6 +276,7 @@ pub fn spawn_car(
         distance_along_road: OrderedFloat(0.0),
         start_intersection: spawn_intersection_entity,
         path,
+        origin_house,
     };
 
     let car_clone = car.clone();
@@ -331,6 +357,7 @@ pub fn spawn_cars(
             spawn_intersection_entity,
             road_entity,
             final_target_entity,
+            None, // No origin house for randomly spawned cars
         ) {
             error!("Failed to spawn car: {:#}", e);
         }
@@ -356,9 +383,23 @@ pub fn update_cars(
             &road_query,
             &mut intersection_query,
         ) {
-            Ok(should_despawn) => {
-                if should_despawn {
-                    commands.entity(entity).despawn();
+            Ok(result) => {
+                match result {
+                    CarUpdateResult::Continue => {
+                        // Car continues moving, do nothing
+                    }
+                    CarUpdateResult::Despawn => {
+                        commands.entity(entity).despawn();
+                    }
+                    CarUpdateResult::ArrivedAtDestination(destination) => {
+                        // Add a component to mark arrival, then despawn
+                        // The factory system will detect this component before despawn
+                        commands.entity(entity).insert(ArrivedAtDestination {
+                            destination,
+                            origin_house: car.origin_house,
+                        });
+                        commands.entity(entity).despawn();
+                    }
                 }
             }
             Err(e) => {

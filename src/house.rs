@@ -105,7 +105,7 @@ fn update_house(
     intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
     house_entity: Entity,
     house: &mut House,
-    house_entities: &[Entity],
+    factory_entities: &[Entity],
 ) -> Result<()> {
     let mut rng = rand::rng();
     
@@ -128,23 +128,19 @@ fn update_house(
 
         anyhow::ensure!(!connected_roads.is_empty(), "No roads connected to house");
 
-        // Choose a random target house (different from current)
-        let target_houses: Vec<Entity> = house_entities
-            .iter()
-            .copied()
-            .filter(|&e| e != house_entity)
-            .collect();
-
-        let target_house = target_houses
+        // Choose a random target factory
+        anyhow::ensure!(!factory_entities.is_empty(), "No factories available");
+        
+        let target_factory = factory_entities
             .choose(&mut rng)
-            .ok_or_else(|| anyhow::anyhow!("No target houses available"))?;
+            .ok_or_else(|| anyhow::anyhow!("No target factories available"))?;
 
         // Get the first road connected to this house
         let (road_entity, _next_intersection) = connected_roads
             .first()
             .ok_or_else(|| anyhow::anyhow!("No connected roads found"))?;
 
-        // Spawn the car using the spawn_car function
+        // Spawn the car using the spawn_car function, with this house as the origin
         let car_entity = spawn_car(
             commands,
             meshes,
@@ -154,13 +150,14 @@ fn update_house(
             intersection_query,
             house_intersection,
             road_entity.0,
-            *target_house,
+            *target_factory,
+            Some(house_intersection), // Store this house as the origin
         )?;
 
         // Store the car entity in the house
         house.car = Some(car_entity);
         
-        bevy::log::info!("House {:?} spawned car {:?} heading to house {:?}", house_entity, car_entity.0, target_house);
+        bevy::log::info!("House {:?} spawned car {:?} heading to factory {:?}", house_entity, car_entity.0, target_factory);
     }
 
     Ok(())
@@ -174,12 +171,13 @@ pub fn update_houses(
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut house_query: Query<(Entity, &mut House, &Transform)>,
+    factory_query: Query<Entity, With<crate::factory::Factory>>,
 ) {
-    // Collect all house entities for random selection
-    let house_entities: Vec<Entity> = house_query.iter().map(|(entity, _, _)| entity).collect();
+    // Collect all factory entities for random selection
+    let factory_entities: Vec<Entity> = factory_query.iter().collect();
     
-    if house_entities.len() < 2 {
-        return; // Need at least 2 houses for spawning cars
+    if factory_entities.is_empty() {
+        return; // Need at least 1 factory for spawning cars
     }
 
     for (house_entity, mut house, _house_transform) in house_query.iter_mut() {
@@ -192,7 +190,7 @@ pub fn update_houses(
             &intersection_query,
             house_entity,
             &mut house,
-            &house_entities,
+            &factory_entities,
         ) {
             bevy::log::error!("Failed to update house {:?}: {:#}", house_entity, e);
         }

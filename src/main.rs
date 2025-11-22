@@ -1,4 +1,5 @@
 mod car;
+mod factory;
 mod house;
 mod interface;
 mod intersection;
@@ -10,6 +11,7 @@ mod world;
 use bevy::prelude::*;
 use bevy::log::LogPlugin;
 use car::CarPlugin;
+use factory::FactoryPlugin;
 use house::HousePlugin;
 use interface::InterfacePlugin;
 use intersection::IntersectionPlugin;
@@ -35,7 +37,7 @@ fn main() {
                 }),
         )
         // Add our custom plugins for each game concept
-        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, InterfacePlugin))
+        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, FactoryPlugin, InterfacePlugin))
         .add_systems(Update, handle_input)
         .run();
 }
