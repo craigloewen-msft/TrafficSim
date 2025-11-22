@@ -4,7 +4,7 @@ use rand::seq::IndexedRandom;
 
 use crate::car::{Car, CarEntity, spawn_car};
 use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
-use crate::road::{Road, RoadEntity};
+use crate::road::{Road};
 use crate::road_network::RoadNetwork;
 use crate::two_way_road::{spawn_two_way_road_between_intersections, TwoWayRoadEntity};
 

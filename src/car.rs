@@ -129,12 +129,6 @@ impl Car {
             self.start_intersection = new_road.start_intersection_entity;
             transform.rotation = Quat::from_rotation_y(new_road.angle);
 
-            let new_target_position = intersection_query
-                .get(next_intersection_entity.0)
-                .context("Failed to get new target intersection")?
-                .1
-                .translation;
-
         } else {
             // Interpolate position along current road
             let progress_ratio = self.distance_along_road.into_inner() / road_length;
