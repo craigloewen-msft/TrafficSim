@@ -315,6 +315,7 @@ pub fn spawn_cars(
 }
 
 /// System to update car movement logic
+/// Uses Bevy's FixedUpdate schedule for consistent physics/simulation timestep
 pub fn update_cars(
     time: Res<Time>,
     mut road_network: ResMut<RoadNetwork>,
@@ -351,6 +352,6 @@ pub struct CarPlugin;
 impl Plugin for CarPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_cars.after(crate::road::spawn_roads))
-            .add_systems(Update, update_cars);
+            .add_systems(FixedUpdate, update_cars);
     }
 }
