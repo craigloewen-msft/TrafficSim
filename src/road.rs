@@ -6,6 +6,7 @@ use crate::road_network::RoadNetwork;
 
 // Import the spawn helper function
 use crate::intersection::spawn_intersection;
+use crate::two_way_road::spawn_two_way_road_between_intersections;
 
 /// Wrapper type for road entities to provide type safety
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -227,8 +228,6 @@ pub fn spawn_roads(
     let road_positions = vec![
         Vec3::new(0.0, 0.0, 20.0),    // 0 - Bottom main intersection
         Vec3::new(0.0, 0.0, -20.0),   // 1 - Top intersection
-        Vec3::new(-10.0, 0.0, 0.0),   // 2 - Left middle intersection
-        Vec3::new(10.0, 0.0, 0.0),    // 3 - Right middle intersection
     ];
 
     // First, create all road intersections
@@ -252,10 +251,6 @@ pub fn spawn_roads(
     // Top -> Right middle -> Bottom (right path back)
     let road_connections = vec![
         (0, 1),  // Bottom to Top
-        (1, 2),  // Top to Left middle
-        (2, 0),  // Left middle to Bottom
-        (1, 3),  // Top to Right middle
-        (3, 0),  // Right middle to Bottom
     ];
 
     for (start_idx, end_idx) in road_connections {
@@ -264,7 +259,7 @@ pub fn spawn_roads(
         let start_intersection_entity = intersection_entities[start_idx];
         let end_intersection_entity = intersection_entities[end_idx];
 
-        if let Err(e) = spawn_road(
+        if let Err(e) = spawn_two_way_road_between_intersections(
             &mut commands,
             &mut meshes,
             &mut materials,
