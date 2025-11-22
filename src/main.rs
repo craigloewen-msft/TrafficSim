@@ -4,6 +4,7 @@ mod interface;
 mod intersection;
 mod road;
 mod road_network;
+mod two_way_road;
 mod world;
 
 use bevy::prelude::*;

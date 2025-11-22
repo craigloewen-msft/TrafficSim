@@ -18,11 +18,107 @@ pub struct Road {
     pub end_intersection_entity: IntersectionEntity,
     pub length: f32,      // Length of the road in world units
     pub angle: f32,       // Rotation angle in radians (Y-axis rotation)
+    pub is_two_way: bool, // Whether this is part of a two-way road (for visual lane offset)
     // pub lane_count: u32,
     // pub speed_limit: f32, // m/s
 }
 
 impl Road {}
+
+/// Helper function to create a road logically (component + network registration)
+/// Returns the RoadEntity wrapper and the Road component
+pub fn add_road_logic(
+    commands: &mut Commands,
+    road_network: &mut ResMut<RoadNetwork>,
+    start_intersection_entity: IntersectionEntity,
+    end_intersection_entity: IntersectionEntity,
+    start_pos: Vec3,
+    end_pos: Vec3,
+    is_two_way: bool,
+) -> Result<RoadEntity> {
+    // Calculate angle from positions
+    let direction = (end_pos - start_pos).normalize();
+    let angle = direction.x.atan2(direction.z);
+
+    // Calculate road properties
+    let length = start_pos.distance(end_pos);
+
+    let road = Road {
+        start_intersection_entity,
+        end_intersection_entity,
+        length,
+        angle,
+        is_two_way,
+    };
+
+    let road_entity = commands.spawn(road).id();
+    let road_entity_wrapper = RoadEntity(road_entity);
+
+    // Add to network with the Road component
+    road_network.add_road(road_entity_wrapper, &road);
+
+    Ok(road_entity_wrapper)
+}
+
+/// Helper function to spawn V-shaped directional arrow indicators on a road
+/// Creates clear directional arrows using two cuboids in a V formation
+/// 
+/// # Arguments
+/// * `offset_x` - Lateral offset from center (0.0 for centered, use ±0.15 for two-way roads)
+pub fn spawn_direction_arrows(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    start_pos: Vec3,
+    end_pos: Vec3,
+    offset_x: f32,
+    parent_entity: Entity,
+) {
+    const ARROW_ARM_WIDTH: f32 = 0.04;
+    const ARROW_ARM_HEIGHT: f32 = 0.03;
+    const ARROW_ARM_LENGTH: f32 = 0.15;
+    const ARROW_ANGLE: f32 = 0.5;  // Angle in radians for the V shape
+    const ARROW_SPACING: f32 = 2.0;
+    let arrow_color = Color::srgb(0.9, 0.9, 0.3);
+
+    let length = start_pos.distance(end_pos);
+
+    // Calculate number of arrows based on road length
+    let num_arrows = (length / ARROW_SPACING).max(1.0) as i32;
+
+    for i in 0..num_arrows {
+        let t = (i as f32 + 0.5) / num_arrows as f32;
+        // Calculate position along the road's length (local Z-axis)
+        let z_offset = (t - 0.5) * length;
+
+        // Spawn V-shaped arrow as children of road - uses local space
+        commands.entity(parent_entity).with_children(|parent| {
+            // Left arm of the V (rotated counterclockwise)
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(ARROW_ARM_WIDTH, ARROW_ARM_HEIGHT, ARROW_ARM_LENGTH))),
+                MeshMaterial3d(materials.add(arrow_color)),
+                Transform::from_translation(Vec3::new(
+                    offset_x - ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.sin(),
+                    ARROW_ARM_HEIGHT,
+                    z_offset + ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.cos(),
+                ))
+                .with_rotation(Quat::from_rotation_y(-ARROW_ANGLE)),
+            ));
+
+            // Right arm of the V (rotated clockwise)
+            parent.spawn((
+                Mesh3d(meshes.add(Cuboid::new(ARROW_ARM_WIDTH, ARROW_ARM_HEIGHT, ARROW_ARM_LENGTH))),
+                MeshMaterial3d(materials.add(arrow_color)),
+                Transform::from_translation(Vec3::new(
+                    offset_x + ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.sin(),
+                    ARROW_ARM_HEIGHT,
+                    z_offset + ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.cos(),
+                ))
+                .with_rotation(Quat::from_rotation_y(ARROW_ANGLE)),
+            ));
+        });
+    }
+}
 
 /// Helper function to spawn a new road entity with all necessary components
 fn spawn_road(
@@ -39,43 +135,41 @@ fn spawn_road(
     const ROAD_HEIGHT: f32 = 0.02;
     let road_color = Color::srgb(0.2, 0.2, 0.2);
 
-    // Calculate angle from positions
-    let direction = (end_pos - start_pos).normalize();
-    let angle = direction.x.atan2(direction.z);
-
-    // Calculate road properties
+    // Calculate properties for visual rendering
     let length = start_pos.distance(end_pos);
     let midpoint = (start_pos + end_pos) / 2.0;
-
-    // Use the calculated angle for rotation
+    let direction = (end_pos - start_pos).normalize();
+    let angle = direction.x.atan2(direction.z);
     let rotation = Quat::from_rotation_y(angle);
 
-    let road = Road {
+    // Create the road logically
+    let road_entity_wrapper = add_road_logic(
+        commands,
+        road_network,
         start_intersection_entity,
         end_intersection_entity,
-        length,
-        angle,
-        // lane_count: 2,     // Default 2 lanes
-        // speed_limit: 13.4, // Default ~30 mph in m/s
-    };
+        start_pos,
+        end_pos,
+        false, // One-way road
+    )?;
 
-    // Spawn road segment
-    let road_entity = commands
-        .spawn((
-            road,
-            Mesh3d(meshes.add(Cuboid::new(ROAD_WIDTH, ROAD_HEIGHT, length))),
-            MeshMaterial3d(materials.add(road_color)),
-            Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
-                .with_rotation(rotation),
-        ))
-        .id();
+    // Add visual components to the existing entity
+    commands.entity(road_entity_wrapper.0).insert((
+        Mesh3d(meshes.add(Cuboid::new(ROAD_WIDTH, ROAD_HEIGHT, length))),
+        MeshMaterial3d(materials.add(road_color)),
+        Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
+            .with_rotation(rotation),
+    ));
 
-    let road_entity_wrapper = RoadEntity(road_entity);
-
-    // Add to network with the Road component
-    road_network.add_road(
-        road_entity_wrapper,
-        &road,
+    // Add direction arrows (centered for one-way roads)
+    spawn_direction_arrows(
+        commands,
+        meshes,
+        materials,
+        start_pos,
+        end_pos,
+        0.0,  // Centered offset
+        road_entity_wrapper.0,
     );
 
     Ok(road_entity_wrapper)

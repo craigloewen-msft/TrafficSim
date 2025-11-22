@@ -135,14 +135,21 @@ impl Car {
                 .1
                 .translation;
 
-            info!(
-                "Car {:?} moving to new position: {:.2?}",
-                car_entity, new_target_position
-            );
         } else {
             // Interpolate position along current road
             let progress_ratio = self.distance_along_road.into_inner() / road_length;
-            transform.translation = start_pos.lerp(end_pos, progress_ratio);
+            let mut position = start_pos.lerp(end_pos, progress_ratio);
+            
+            // Apply lane offset for two-way roads
+            if current_road_queried.1.is_two_way {
+                const LANE_OFFSET: f32 = 0.15;
+                // Calculate perpendicular offset (right side of the road direction)
+                let direction = (end_pos - start_pos).normalize();
+                let right = Vec3::new(-direction.z, 0.0, direction.x); // Perpendicular to direction
+                position += right * LANE_OFFSET;
+            }
+            
+            transform.translation = position;
         }
 
         road_network

@@ -6,6 +6,7 @@ use crate::car::{Car, CarEntity, spawn_car};
 use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
 use crate::road::{Road, RoadEntity};
 use crate::road_network::RoadNetwork;
+use crate::two_way_road::{spawn_two_way_road_between_intersections, TwoWayRoadEntity};
 
 #[derive(Component, Debug)]
 pub struct House {
@@ -79,63 +80,19 @@ fn spawn_driveway(
     road_intersection: IntersectionEntity,
     house_pos: Vec3,
     road_pos: Vec3,
-) -> Result<RoadEntity> {
-    const DRIVEWAY_WIDTH: f32 = 0.3;
-    const DRIVEWAY_HEIGHT: f32 = 0.02;
-    let driveway_color = Color::srgb(0.25, 0.25, 0.25);
-
-    let direction = (road_pos - house_pos).normalize();
-    let angle = direction.x.atan2(direction.z);
-    let length = house_pos.distance(road_pos);
-    let midpoint = (house_pos + road_pos) / 2.0;
-    let rotation = Quat::from_rotation_y(angle);
-
-    // Create driveway from house to road (outbound)
-    let driveway_road_out = crate::road::Road {
-        start_intersection_entity: house_intersection,
-        end_intersection_entity: road_intersection,
-        length,
-        angle,
-    };
-
-    let driveway_entity_out = commands.spawn((
-        driveway_road_out,
-        Mesh3d(meshes.add(Cuboid::new(DRIVEWAY_WIDTH, DRIVEWAY_HEIGHT, length))),
-        MeshMaterial3d(materials.add(driveway_color)),
-        Transform::from_translation(Vec3::new(midpoint.x, DRIVEWAY_HEIGHT / 2.0, midpoint.z))
-            .with_rotation(rotation),
-    )).id();
-
-    let driveway_entity_wrapper_out = RoadEntity(driveway_entity_out);
-
-    // Add outbound driveway to network
-    road_network.add_road(
-        driveway_entity_wrapper_out,
-        &driveway_road_out,
-    );
-
-    // Create driveway from road to house (inbound) - reuses same visual mesh
-    let driveway_road_in = crate::road::Road {
-        start_intersection_entity: road_intersection,
-        end_intersection_entity: house_intersection,
-        length,
-        angle: angle + std::f32::consts::PI, // Opposite direction
-    };
-
-    let driveway_entity_in = commands.spawn((
-        driveway_road_in,
-        // We don't need to render this separately, it's the same physical driveway
-    )).id();
-
-    let driveway_entity_wrapper_in = RoadEntity(driveway_entity_in);
-
-    // Add inbound driveway to network
-    road_network.add_road(
-        driveway_entity_wrapper_in,
-        &driveway_road_in,
-    );
-
-    Ok(driveway_entity_wrapper_out)
+) -> Result<TwoWayRoadEntity> {
+    // Use spawn_two_way_road_between_intersections to create a bidirectional driveway
+    // This uses existing intersections and creates one visual mesh and two logical roads
+    spawn_two_way_road_between_intersections(
+        commands,
+        meshes,
+        materials,
+        road_network,
+        house_intersection,
+        road_intersection,
+        house_pos,
+        road_pos,
+    )
 }
 
 /// Helper function to update a single house and spawn a car if needed
