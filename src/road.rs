@@ -324,6 +324,29 @@ pub fn spawn_roads(
             bevy::log::error!("Failed to spawn factory with driveway: {:#}", e);
         }
     }
+
+    // Spawn 3 shops connected to the main road intersections
+    let shop_configs = vec![
+        (Vec3::new(-8.0, 0.0, 20.0), 0),   // Shop 1 - Near bottom intersection
+        (Vec3::new(8.0, 0.0, 20.0), 0),    // Shop 2 - Near bottom intersection
+    ];
+
+    for (shop_pos, road_intersection_idx) in shop_configs {
+        let road_intersection_entity = intersection_entities[road_intersection_idx];
+        let road_intersection_pos = road_positions[road_intersection_idx];
+
+        if let Err(e) = crate::shop::spawn_shop_with_driveway(
+            &mut commands,
+            &mut meshes,
+            &mut materials,
+            &mut road_network,
+            shop_pos,
+            road_intersection_entity,
+            road_intersection_pos,
+        ) {
+            bevy::log::error!("Failed to spawn shop with driveway: {:#}", e);
+        }
+    }
 }
 
 /// Plugin to register all road-related systems

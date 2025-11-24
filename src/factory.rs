@@ -1,16 +1,17 @@
 use bevy::prelude::*;
 use anyhow::Result;
+use rand::seq::IndexedRandom;
 
-use crate::car::{Car, CarEntity, spawn_car, ArrivedAtDestination};
+use crate::car::{Car, CarEntity, spawn_car, CarArrivedAtFactory};
 use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
 use crate::road::{Road};
 use crate::road_network::RoadNetwork;
 use crate::two_way_road::{spawn_two_way_road_between_intersections, TwoWayRoadEntity};
 
-/// Component representing a factory that receives cars and sends them back after processing
+/// Component representing a factory that receives cars and sends them to shops after processing
 #[derive(Component, Debug)]
 pub struct Factory {
-    /// Cars currently being processed at this factory (car entity, return target, time remaining)
+    /// Cars currently being processed at this factory (car entity, shop target, time remaining)
     pub processing_cars: Vec<(CarEntity, IntersectionEntity, f32)>,
 }
 
@@ -100,14 +101,24 @@ fn spawn_driveway(
 /// System to detect cars arriving at factories
 pub fn detect_car_arrivals(
     mut factory_query: Query<(Entity, &mut Factory)>,
-    arrival_query: Query<(Entity, &ArrivedAtDestination)>,
+    mut arrival_events: MessageReader<CarArrivedAtFactory>,
+    shop_query: Query<Entity, With<crate::shop::Shop>>,
 ) {
-    for (car_entity, arrival) in arrival_query.iter() {
+    // Collect all shop entities
+    let shop_entities: Vec<Entity> = shop_query.iter().collect();
+    
+    if shop_entities.is_empty() {
+        bevy::log::warn!("No shops available for factory to send cars to");
+        return;
+    }
+
+    for event in arrival_events.read() {
         // Check if the destination is a factory
-        if let Ok((_, mut factory)) = factory_query.get_mut(arrival.destination.0) {
-            if let Some(origin_house) = arrival.origin_house {
-                // This car arrived at this factory from a house
-                factory_receive_car(&mut factory, CarEntity(car_entity), origin_house);
+        if let Ok((_, mut factory)) = factory_query.get_mut(event.factory_entity.0) {
+            // Choose a random shop as the target
+            let mut rng = rand::rng();
+            if let Some(&shop_entity) = shop_entities.choose(&mut rng) {
+                factory_receive_car(&mut factory, CarEntity(event.car_entity), IntersectionEntity(shop_entity));
             }
         }
     }
@@ -127,22 +138,22 @@ pub fn update_factories(
     for (factory_entity, mut factory) in factory_query.iter_mut() {
         let factory_intersection = IntersectionEntity(factory_entity);
         
-        // Update processing times and spawn return cars when ready
+        // Update processing times and spawn cars to shops when ready
         let mut cars_to_spawn = Vec::new();
-        factory.processing_cars.retain_mut(|(_car_entity, return_target, time_remaining)| {
+        factory.processing_cars.retain_mut(|(_car_entity, shop_target, time_remaining)| {
             *time_remaining -= time.delta_secs();
             
             if *time_remaining <= 0.0 {
-                // Processing complete - prepare to spawn return car
-                cars_to_spawn.push(*return_target);
+                // Processing complete - prepare to spawn car to shop
+                cars_to_spawn.push(*shop_target);
                 false // Remove from processing list
             } else {
                 true // Keep processing
             }
         });
 
-        // Spawn return cars for completed processing
-        for return_target in cars_to_spawn {
+        // Spawn cars to shops for completed processing
+        for shop_target in cars_to_spawn {
             // Find a road connected to this factory
             let connected_roads = match road_network.get_connected_roads(factory_intersection) {
                 Some(roads) => roads,
@@ -160,7 +171,7 @@ pub fn update_factories(
             // Get the first road connected to this factory
             let (road_entity, _) = connected_roads[0];
 
-            // Spawn a car to return to the origin house
+            // Spawn a car to go to the shop
             match spawn_car(
                 &mut commands,
                 &mut meshes,
@@ -170,26 +181,24 @@ pub fn update_factories(
                 &intersection_query,
                 factory_intersection,
                 road_entity.0,
-                return_target.0,
-                None, // No origin house for return cars
+                shop_target.0,
+                None, // No origin house for factory->shop cars
             ) {
                 Ok(car_entity) => {
                     bevy::log::info!(
-                        "Factory {:?} spawned return car {:?} to house {:?}",
+                        "Factory {:?} spawned car {:?} to shop {:?}",
                         factory_entity,
                         car_entity.0,
-                        return_target.0
+                        shop_target.0
                     );
                 }
                 Err(e) => {
-                    bevy::log::error!("Failed to spawn return car from factory: {:#}", e);
+                    bevy::log::error!("Failed to spawn car from factory to shop: {:#}", e);
                 }
             }
         }
 
-        // Check for cars that have arrived at this factory
-        // We detect this by checking if any car has this factory as its final destination
-        // and has reached it (we'll handle this in the car update system, but we track it here)
+        // Note: Cars arriving at this factory are handled in detect_car_arrivals system
     }
 }
 
@@ -197,16 +206,16 @@ pub fn update_factories(
 pub fn factory_receive_car(
     factory: &mut Factory,
     car_entity: CarEntity,
-    origin_house: IntersectionEntity,
+    shop_target: IntersectionEntity,
 ) {
     bevy::log::info!(
-        "Factory received car {:?} from house {:?}, will process for {} seconds",
+        "Factory received car {:?}, will process for {} seconds and send to shop {:?}",
         car_entity.0,
-        origin_house.0,
-        FACTORY_PROCESSING_TIME
+        FACTORY_PROCESSING_TIME,
+        shop_target.0
     );
     
-    factory.processing_cars.push((car_entity, origin_house, FACTORY_PROCESSING_TIME));
+    factory.processing_cars.push((car_entity, shop_target, FACTORY_PROCESSING_TIME));
 }
 
 pub struct FactoryPlugin;

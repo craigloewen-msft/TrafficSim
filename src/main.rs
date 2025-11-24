@@ -5,6 +5,7 @@ mod interface;
 mod intersection;
 mod road;
 mod road_network;
+mod shop;
 mod two_way_road;
 mod world;
 
@@ -16,6 +17,7 @@ use house::HousePlugin;
 use interface::InterfacePlugin;
 use intersection::IntersectionPlugin;
 use road::RoadPlugin;
+use shop::ShopPlugin;
 use world::WorldPlugin;
 
 fn main() {
@@ -37,7 +39,7 @@ fn main() {
                 }),
         )
         // Add our custom plugins for each game concept
-        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, FactoryPlugin, InterfacePlugin))
+        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, FactoryPlugin, ShopPlugin, InterfacePlugin))
         .add_systems(Update, handle_input)
         .run();
 }

@@ -19,12 +19,18 @@ pub enum CarUpdateResult {
     ArrivedAtDestination(IntersectionEntity), // Car arrived at destination
 }
 
-/// Component to mark that a car has arrived at its destination
-/// This is used to communicate with factory systems
-#[derive(Component)]
-pub struct ArrivedAtDestination {
-    pub destination: IntersectionEntity,
-    pub origin_house: Option<IntersectionEntity>,
+/// Message triggered when a car arrives at a factory
+#[derive(Message, Debug)]
+pub struct CarArrivedAtFactory {
+    pub factory_entity: IntersectionEntity,
+    pub car_entity: Entity,
+}
+
+/// Message triggered when a car arrives at a shop
+#[derive(Message, Debug)]
+pub struct CarArrivedAtShop {
+    pub shop_entity: IntersectionEntity,
+    pub car_entity: Entity,
 }
 
 /// Wrapper type for car entities to provide type safety
@@ -147,14 +153,8 @@ impl Car {
                     )
                     .context("Failed to update car position")?;
 
-                // Check if we arrived at a factory and have an origin house
-                if let Some(_origin) = self.origin_house {
-                    // This car came from a house, so the destination is a factory
-                    return Ok(CarUpdateResult::ArrivedAtDestination(reached_intersection));
-                } else {
-                    // Normal despawn (either from factory back to house, or other scenarios)
-                    return Ok(CarUpdateResult::Despawn);
-                }
+                // Always return ArrivedAtDestination so the system can check what type of destination it is
+                return Ok(CarUpdateResult::ArrivedAtDestination(reached_intersection));
             }
 
             let next_intersection_entity =
@@ -373,6 +373,10 @@ pub fn update_cars(
     mut intersection_query: Query<(&mut Intersection, &Transform), Without<Car>>,
     mut car_query: Query<(Entity, &mut Car, &mut Transform)>,
     mut commands: Commands,
+    factory_query: Query<Entity, With<crate::factory::Factory>>,
+    shop_query: Query<Entity, With<crate::shop::Shop>>,
+    mut factory_arrival_events: MessageWriter<CarArrivedAtFactory>,
+    mut shop_arrival_events: MessageWriter<CarArrivedAtShop>,
 ) {
     for (entity, mut car, mut transform) in car_query.iter_mut() {
         match car.update_car(
@@ -392,12 +396,23 @@ pub fn update_cars(
                         commands.entity(entity).despawn();
                     }
                     CarUpdateResult::ArrivedAtDestination(destination) => {
-                        // Add a component to mark arrival, then despawn
-                        // The factory system will detect this component before despawn
-                        commands.entity(entity).insert(ArrivedAtDestination {
-                            destination,
-                            origin_house: car.origin_house,
-                        });
+                        // Check what type of destination this is and send appropriate event
+                        if factory_query.contains(destination.0) {
+                            // Car arrived at a factory
+                            if let Some(_origin_house) = car.origin_house {
+                                factory_arrival_events.write(CarArrivedAtFactory {
+                                    factory_entity: destination,
+                                    car_entity: entity,
+                                });
+                            }
+                        } else if shop_query.contains(destination.0) {
+                            // Car arrived at a shop
+                            shop_arrival_events.write(CarArrivedAtShop {
+                                shop_entity: destination,
+                                car_entity: entity,
+                            });
+                        }
+                        // Despawn the car after sending the event
                         commands.entity(entity).despawn();
                     }
                 }
@@ -415,7 +430,10 @@ pub struct CarPlugin;
 
 impl Plugin for CarPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, spawn_cars.after(crate::road::spawn_roads))
+        app
+            .add_message::<CarArrivedAtFactory>()
+            .add_message::<CarArrivedAtShop>()
+            .add_systems(Startup, spawn_cars.after(crate::road::spawn_roads))
             .add_systems(FixedUpdate, update_cars);
     }
 }
