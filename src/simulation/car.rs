@@ -22,6 +22,7 @@ pub enum CarUpdateResult {
 
 /// A car in the traffic simulation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SimCar {
     pub id: CarId,
     pub speed: f32,

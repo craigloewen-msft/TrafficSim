@@ -17,6 +17,7 @@ pub const PRODUCT_DEMAND_PER_DELIVERY: f32 = 10.0;
 
 /// A house in the simulation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SimHouse {
     pub id: HouseId,
     pub intersection_id: IntersectionId,

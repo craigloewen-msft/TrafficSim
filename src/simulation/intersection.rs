@@ -6,6 +6,7 @@ use super::types::{CarId, IntersectionId, Position};
 
 /// An intersection in the traffic simulation
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub struct SimIntersection {
     pub id: IntersectionId,
     pub position: Position,

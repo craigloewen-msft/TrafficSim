@@ -34,6 +34,7 @@ impl RoadEdge {
 /// Standalone road network graph for pathfinding
 /// This doesn't depend on Bevy's ECS system
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct SimRoadNetwork {
     /// The underlying petgraph directed graph (one-way roads)
     graph: DiGraph<IntersectionId, RoadEdge>,
@@ -186,6 +187,7 @@ impl SimRoadNetwork {
     }
 
     /// Gets all intersection IDs in the network
+    #[allow(dead_code)]
     pub fn get_all_intersections(&self) -> Vec<IntersectionId> {
         self.intersection_to_node.keys().copied().collect()
     }
