@@ -14,6 +14,10 @@ pub struct House {
     pub car: Option<CarEntity>,
 }
 
+/// Component to mark the visual demand indicator entity
+#[derive(Component, Debug)]
+pub struct DemandIndicator;
+
 pub fn spawn_house_intersection(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -37,6 +41,16 @@ pub fn spawn_house_intersection(
         Mesh3d(meshes.add(Cuboid::new(HOUSE_SIZE, HOUSE_SIZE, HOUSE_SIZE))),
         MeshMaterial3d(materials.add(house_color)),
     ));
+
+    // Spawn demand indicator above the house
+    let indicator_entity = commands.spawn((
+        DemandIndicator,
+        Mesh3d(meshes.add(Sphere::new(0.2))),
+        MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
+        Transform::from_translation(Vec3::new(0.0, 1.2, 0.0)),
+    )).id();
+    
+    commands.entity(intersection_entity.0).add_child(indicator_entity);
 
     Ok(intersection_entity)
 }
@@ -186,10 +200,30 @@ pub fn spawn_workers(
     }
 }
 
+/// System to update demand indicators for houses
+pub fn update_house_demand_indicators(
+    house_query: Query<&Children, With<House>>,
+    mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for children in house_query.iter() {
+        for child in children.iter() {
+            if let Ok(material_handle) = indicator_query.get_mut(child) {
+                // Houses without cars show green, houses with cars out show gray
+                // (We can't easily check if car is out here without adding complexity)
+                // For now, just show green as "ready to send workers"
+                if let Some(material) = materials.get_mut(&material_handle.0) {
+                    material.base_color = Color::srgb(0.0, 1.0, 0.0);
+                }
+            }
+        }
+    }
+}
+
 pub struct HousePlugin;
 
 impl Plugin for HousePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, spawn_workers);
+        app.add_systems(FixedUpdate, (spawn_workers, update_house_demand_indicators));
     }
 }

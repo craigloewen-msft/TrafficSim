@@ -2,6 +2,7 @@ use bevy::prelude::*;
 use anyhow::Result;
 
 use crate::car::CarArrivedAtShop;
+use crate::house::DemandIndicator;
 use crate::intersection::{IntersectionEntity, spawn_intersection};
 use crate::road_network::RoadNetwork;
 use crate::two_way_road::spawn_two_way_road_between_intersections;
@@ -51,6 +52,16 @@ pub fn spawn_shop_intersection(
         Mesh3d(meshes.add(Cuboid::new(SHOP_SIZE, SHOP_SIZE, SHOP_SIZE))),
         MeshMaterial3d(materials.add(shop_color)),
     ));
+
+    // Spawn demand indicator above the shop
+    let indicator_entity = commands.spawn((
+        DemandIndicator,
+        Mesh3d(meshes.add(Sphere::new(0.22))),
+        MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
+        Transform::from_translation(Vec3::new(0.0, 1.3, 0.0)),
+    )).id();
+    
+    commands.entity(intersection_entity.0).add_child(indicator_entity);
 
     Ok(intersection_entity)
 }
@@ -122,10 +133,38 @@ pub fn update_shops(
     }
 }
 
+/// System to update demand indicators for shops
+pub fn update_shop_demand_indicators(
+    shop_query: Query<(&Shop, &Children)>,
+    mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for (shop, children) in shop_query.iter() {
+        for child in children.iter() {
+            if let Ok(material_handle) = indicator_query.get_mut(child) {
+                if let Some(material) = materials.get_mut(&material_handle.0) {
+                    // Color based on product demand: green (low) -> yellow -> red (high)
+                    let demand_ratio = (shop.product_demand / (PRODUCT_DEMAND_THRESHOLD * 2.0)).min(1.0);
+                    
+                    if demand_ratio < 0.5 {
+                        // Green to yellow transition
+                        let t = demand_ratio * 2.0;
+                        material.base_color = Color::srgb(t, 1.0, 0.0);
+                    } else {
+                        // Yellow to red transition
+                        let t = (demand_ratio - 0.5) * 2.0;
+                        material.base_color = Color::srgb(1.0, 1.0 - t, 0.0);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub struct ShopPlugin;
 
 impl Plugin for ShopPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (handle_shop_arrivals, update_shops));
+        app.add_systems(FixedUpdate, (handle_shop_arrivals, update_shops, update_shop_demand_indicators));
     }
 }

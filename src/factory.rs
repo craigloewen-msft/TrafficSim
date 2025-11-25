@@ -3,6 +3,7 @@ use anyhow::Result;
 use rand::seq::IndexedRandom;
 
 use crate::car::{Car, CarEntity, spawn_car, CarArrivedAtFactory};
+use crate::house::DemandIndicator;
 use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
 use crate::road::{Road};
 use crate::road_network::RoadNetwork;
@@ -60,6 +61,16 @@ pub fn spawn_factory_intersection(
         Mesh3d(meshes.add(Cuboid::new(FACTORY_SIZE, FACTORY_SIZE, FACTORY_SIZE))),
         MeshMaterial3d(materials.add(factory_color)),
     ));
+
+    // Spawn demand indicator above the factory
+    let indicator_entity = commands.spawn((
+        DemandIndicator,
+        Mesh3d(meshes.add(Sphere::new(0.25))),
+        MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
+        Transform::from_translation(Vec3::new(0.0, 1.5, 0.0)),
+    )).id();
+    
+    commands.entity(intersection_entity.0).add_child(indicator_entity);
 
     Ok(intersection_entity)
 }
@@ -287,10 +298,38 @@ pub fn try_reserve_worker(factory: &mut Factory) -> bool {
     }
 }
 
+/// System to update demand indicators for factories
+pub fn update_factory_demand_indicators(
+    factory_query: Query<(&Factory, &Children)>,
+    mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for (factory, children) in factory_query.iter() {
+        for child in children.iter() {
+            if let Ok(material_handle) = indicator_query.get_mut(child) {
+                if let Some(material) = materials.get_mut(&material_handle.0) {
+                    // Color based on labor demand: green (low) -> yellow -> red (high)
+                    let demand_ratio = (factory.labor_demand / (LABOR_DEMAND_THRESHOLD * 2.0)).min(1.0);
+                    
+                    if demand_ratio < 0.5 {
+                        // Green to yellow transition
+                        let t = demand_ratio * 2.0;
+                        material.base_color = Color::srgb(t, 1.0, 0.0);
+                    } else {
+                        // Yellow to red transition
+                        let t = (demand_ratio - 0.5) * 2.0;
+                        material.base_color = Color::srgb(1.0, 1.0 - t, 0.0);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub struct FactoryPlugin;
 
 impl Plugin for FactoryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(FixedUpdate, (detect_car_arrivals, update_factories));
+        app.add_systems(FixedUpdate, (detect_car_arrivals, update_factories, update_factory_demand_indicators));
     }
 }
