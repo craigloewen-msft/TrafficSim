@@ -12,8 +12,12 @@ mod building;
 mod world;
 
 // Re-export public types for external use
+// These may not be used within this crate but are part of the public API
 #[allow(unused_imports)]
-pub use types::*;
+pub use types::{
+    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
+    CAR_LENGTH, INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
+};
 #[allow(unused_imports)]
 pub use road_network::SimRoadNetwork;
 #[allow(unused_imports)]
