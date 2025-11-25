@@ -7,16 +7,29 @@ use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
 use crate::road::{Road};
 use crate::road_network::RoadNetwork;
 use crate::two_way_road::{spawn_two_way_road_between_intersections, TwoWayRoadEntity};
+use crate::shop::{Shop, PRODUCT_DEMAND_THRESHOLD};
 
 /// Component representing a factory that receives cars and sends them to shops after processing
 #[derive(Component, Debug)]
 pub struct Factory {
     /// Cars currently being processed at this factory (car entity, shop target, time remaining)
     pub processing_cars: Vec<(CarEntity, IntersectionEntity, f32)>,
+    /// Current labor demand (increases over time, decreases when workers arrive)
+    pub labor_demand: f32,
+    /// Rate at which labor demand increases per second
+    pub labor_demand_rate: f32,
+    /// Current inventory of produced goods
+    pub inventory: u32,
+    /// Maximum inventory capacity
+    pub max_inventory: u32,
 }
 
 /// Duration in seconds that a factory processes a car before sending it back
 const FACTORY_PROCESSING_TIME: f32 = 2.0;
+/// Threshold at which factories need workers
+pub const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
+/// Amount of demand reduced when a worker arrives
+const LABOR_DEMAND_PER_WORKER: f32 = 10.0;
 
 pub fn spawn_factory_intersection(
     commands: &mut Commands,
@@ -37,7 +50,13 @@ pub fn spawn_factory_intersection(
     )?;
 
     commands.entity(intersection_entity.0).insert((
-        Factory { processing_cars: Vec::new() },
+        Factory { 
+            processing_cars: Vec::new(),
+            labor_demand: 10.0,
+            labor_demand_rate: 1.0,
+            inventory: 0,
+            max_inventory: 10,
+        },
         Mesh3d(meshes.add(Cuboid::new(FACTORY_SIZE, FACTORY_SIZE, FACTORY_SIZE))),
         MeshMaterial3d(materials.add(factory_color)),
     ));
@@ -133,45 +152,75 @@ pub fn update_factories(
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
     mut factory_query: Query<(Entity, &mut Factory)>,
+    shop_query: Query<(Entity, &Shop)>,
     time: Res<Time>,
 ) {
     for (factory_entity, mut factory) in factory_query.iter_mut() {
         let factory_intersection = IntersectionEntity(factory_entity);
         
-        // Update processing times and spawn cars to shops when ready
-        let mut cars_to_spawn = Vec::new();
-        factory.processing_cars.retain_mut(|(_car_entity, shop_target, time_remaining)| {
+        // Increase labor demand over time
+        factory.labor_demand += factory.labor_demand_rate * time.delta_secs();
+        
+        // Update processing times and add to inventory when ready
+        let mut products_produced = 0;
+        factory.processing_cars.retain_mut(|(_car_entity, _shop_target, time_remaining)| {
             *time_remaining -= time.delta_secs();
             
             if *time_remaining <= 0.0 {
-                // Processing complete - prepare to spawn car to shop
-                cars_to_spawn.push(*shop_target);
+                // Processing complete - add to inventory
+                products_produced += 1;
                 false // Remove from processing list
             } else {
                 true // Keep processing
             }
         });
 
-        // Spawn cars to shops for completed processing
-        for shop_target in cars_to_spawn {
+        // Add produced goods to inventory (up to max capacity)
+        if products_produced > 0 {
+            let space_available = factory.max_inventory.saturating_sub(factory.inventory);
+            let to_add = products_produced.min(space_available);
+            factory.inventory += to_add;
+            
+            bevy::log::info!(
+                "Factory {:?} produced {} goods, inventory now {}/{}",
+                factory_entity,
+                to_add,
+                factory.inventory,
+                factory.max_inventory
+            );
+        }
+
+        // Check shops with high demand and send inventory
+        let mut shops_needing_products: Vec<Entity> = shop_query
+            .iter()
+            .filter(|(_, shop)| shop.product_demand >= PRODUCT_DEMAND_THRESHOLD)
+            .map(|(entity, _)| entity)
+            .collect();
+
+        // Send products to shops if we have inventory
+        while factory.inventory > 0 && !shops_needing_products.is_empty() {
+            // Get a shop that needs products
+            let shop_entity = shops_needing_products.pop().unwrap();
+            let shop_target = IntersectionEntity(shop_entity);
+            
             // Find a road connected to this factory
             let connected_roads = match road_network.get_connected_roads(factory_intersection) {
                 Some(roads) => roads,
                 None => {
                     bevy::log::error!("Factory intersection {:?} not found in road network", factory_entity);
-                    continue;
+                    break;
                 }
             };
 
             if connected_roads.is_empty() {
                 bevy::log::error!("No roads connected to factory {:?}", factory_entity);
-                continue;
+                break;
             }
 
             // Get the first road connected to this factory
             let (road_entity, _) = connected_roads[0];
 
-            // Spawn a car to go to the shop
+            // Spawn a car to go to the shop with the product
             match spawn_car(
                 &mut commands,
                 &mut meshes,
@@ -185,15 +234,19 @@ pub fn update_factories(
                 None, // No origin house for factory->shop cars
             ) {
                 Ok(car_entity) => {
+                    factory.inventory -= 1; // Deduct from inventory
                     bevy::log::info!(
-                        "Factory {:?} spawned car {:?} to shop {:?}",
+                        "Factory {:?} spawned delivery car {:?} to shop {:?} (inventory: {}/{})",
                         factory_entity,
                         car_entity.0,
-                        shop_target.0
+                        shop_target.0,
+                        factory.inventory,
+                        factory.max_inventory
                     );
                 }
                 Err(e) => {
                     bevy::log::error!("Failed to spawn car from factory to shop: {:#}", e);
+                    break;
                 }
             }
         }
@@ -208,20 +261,36 @@ pub fn factory_receive_car(
     car_entity: CarEntity,
     shop_target: IntersectionEntity,
 ) {
+    // Reduce labor demand when worker arrives
+    factory.labor_demand = (factory.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
+    
     bevy::log::info!(
-        "Factory received car {:?}, will process for {} seconds and send to shop {:?}",
+        "Factory received car {:?}, will process for {} seconds and send to shop {:?} (labor demand now: {:.1})",
         car_entity.0,
         FACTORY_PROCESSING_TIME,
-        shop_target.0
+        shop_target.0,
+        factory.labor_demand
     );
     
     factory.processing_cars.push((car_entity, shop_target, FACTORY_PROCESSING_TIME));
+}
+
+/// Try to reserve a worker slot at this factory. Returns true if accepted (had high demand), false otherwise.
+/// If accepted, reduces the factory's labor demand.
+pub fn try_reserve_worker(factory: &mut Factory) -> bool {
+    if factory.labor_demand >= LABOR_DEMAND_THRESHOLD {
+        // Reserve the slot by reducing demand now
+        factory.labor_demand = (factory.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
+        true
+    } else {
+        false
+    }
 }
 
 pub struct FactoryPlugin;
 
 impl Plugin for FactoryPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (detect_car_arrivals, update_factories));
+        app.add_systems(FixedUpdate, (detect_car_arrivals, update_factories));
     }
 }

@@ -74,6 +74,7 @@ pub fn spawn_direction_arrows(
     end_pos: Vec3,
     offset_x: f32,
     parent_entity: Entity,
+    reverse_direction: bool,
 ) {
     const ARROW_ARM_WIDTH: f32 = 0.04;
     const ARROW_ARM_HEIGHT: f32 = 0.03;
@@ -83,6 +84,12 @@ pub fn spawn_direction_arrows(
     let arrow_color = Color::srgb(0.9, 0.9, 0.3);
 
     let length = start_pos.distance(end_pos);
+
+    let arrow_angle_offset = if reverse_direction {
+        0.0
+    } else {
+        std::f32::consts::PI / 2.0
+    };
 
     // Calculate number of arrows based on road length
     let num_arrows = (length / ARROW_SPACING).max(1.0) as i32;
@@ -103,7 +110,7 @@ pub fn spawn_direction_arrows(
                     ARROW_ARM_HEIGHT,
                     z_offset + ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.cos(),
                 ))
-                .with_rotation(Quat::from_rotation_y(-ARROW_ANGLE)),
+                .with_rotation(Quat::from_rotation_y(-ARROW_ANGLE + arrow_angle_offset)),
             ));
 
             // Right arm of the V (rotated clockwise)
@@ -115,7 +122,7 @@ pub fn spawn_direction_arrows(
                     ARROW_ARM_HEIGHT,
                     z_offset + ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.cos(),
                 ))
-                .with_rotation(Quat::from_rotation_y(ARROW_ANGLE)),
+                .with_rotation(Quat::from_rotation_y(ARROW_ANGLE + arrow_angle_offset)),
             ));
         });
     }
@@ -171,6 +178,7 @@ fn spawn_road(
         end_pos,
         0.0,  // Centered offset
         road_entity_wrapper.0,
+        false,
     );
 
     Ok(road_entity_wrapper)

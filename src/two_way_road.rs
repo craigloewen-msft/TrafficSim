@@ -83,6 +83,7 @@ pub fn spawn_two_way_road_between_intersections(
         end_pos,
         -0.15,  // Left lane offset
         two_way_road_entity,
+        false,
     );
 
     // Add direction arrows for backward direction (right lane)
@@ -94,6 +95,7 @@ pub fn spawn_two_way_road_between_intersections(
         start_pos,
         0.15,  // Right lane offset
         two_way_road_entity,
+        true,
     );
 
     Ok(TwoWayRoadEntity(two_way_road_entity))

@@ -1,8 +1,9 @@
 use bevy::prelude::*;
 use anyhow::Result;
-use rand::seq::IndexedRandom;
+use rand::Rng;
 
 use crate::car::{Car, CarEntity, spawn_car};
+use crate::factory::{Factory, LABOR_DEMAND_THRESHOLD, try_reserve_worker};
 use crate::intersection::{Intersection, IntersectionEntity, spawn_intersection};
 use crate::road::{Road};
 use crate::road_network::RoadNetwork;
@@ -95,104 +96,92 @@ fn spawn_driveway(
     )
 }
 
-/// Helper function to update a single house and spawn a car if needed
-fn update_house(
-    commands: &mut Commands,
-    meshes: &mut ResMut<Assets<Mesh>>,
-    materials: &mut ResMut<Assets<StandardMaterial>>,
-    road_network: &mut RoadNetwork,
-    road_query: &Query<(Entity, &Road)>,
-    intersection_query: &Query<(&Intersection, &Transform), Without<Car>>,
-    house_entity: Entity,
-    house: &mut House,
-    factory_entities: &[Entity],
-) -> Result<()> {
-    let mut rng = rand::rng();
-    
-    // Check if this house already has a car
-    if let Some(car_entity) = house.car {
-        if commands.get_entity(car_entity.0).is_err() {
-            house.car = None;
-        }
-    }
-
-    // If no car exists, spawn a new one
-    if house.car.is_none() {
-        // Find a road connected to this house intersection
-        let house_intersection = IntersectionEntity(house_entity);
-        
-        // Get roads connected to this house from the road network
-        let connected_roads = road_network
-            .get_connected_roads(house_intersection)
-            .ok_or_else(|| anyhow::anyhow!("House intersection not found in road network"))?;
-
-        anyhow::ensure!(!connected_roads.is_empty(), "No roads connected to house");
-
-        // Choose a random target factory
-        anyhow::ensure!(!factory_entities.is_empty(), "No factories available");
-        
-        let target_factory = factory_entities
-            .choose(&mut rng)
-            .ok_or_else(|| anyhow::anyhow!("No target factories available"))?;
-
-        // Get the first road connected to this house
-        let (road_entity, _next_intersection) = connected_roads
-            .first()
-            .ok_or_else(|| anyhow::anyhow!("No connected roads found"))?;
-
-        // Spawn the car using the spawn_car function, with this house as the origin
-        let car_entity = spawn_car(
-            commands,
-            meshes,
-            materials,
-            road_network,
-            road_query,
-            intersection_query,
-            house_intersection,
-            road_entity.0,
-            *target_factory,
-            Some(house_intersection), // Store this house as the origin
-        )?;
-
-        // Store the car entity in the house
-        house.car = Some(car_entity);
-        
-        bevy::log::info!("House {:?} spawned car {:?} heading to factory {:?}", house_entity, car_entity.0, target_factory);
-    }
-
-    Ok(())
-}
-
-pub fn update_houses(
+/// System to spawn workers from houses to factories with demand
+pub fn spawn_workers(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut road_network: ResMut<RoadNetwork>,
     road_query: Query<(Entity, &Road)>,
     intersection_query: Query<(&Intersection, &Transform), Without<Car>>,
-    mut house_query: Query<(Entity, &mut House, &Transform)>,
-    factory_query: Query<Entity, With<crate::factory::Factory>>,
+    mut house_query: Query<(Entity, &mut House)>,
+    mut factory_query: Query<(Entity, &mut Factory)>,
 ) {
-    // Collect all factory entities for random selection
-    let factory_entities: Vec<Entity> = factory_query.iter().collect();
+    // Collect factories with high labor demand
+    let factories_with_demand: Vec<Entity> = factory_query
+        .iter()
+        .filter(|(_, factory)| factory.labor_demand >= LABOR_DEMAND_THRESHOLD)
+        .map(|(entity, _)| entity)
+        .collect();
     
-    if factory_entities.is_empty() {
-        return; // Need at least 1 factory for spawning cars
+    if factories_with_demand.is_empty() {
+        return; // No factories need workers
     }
 
-    for (house_entity, mut house, _house_transform) in house_query.iter_mut() {
-        if let Err(e) = update_house(
-            &mut commands,
-            &mut meshes,
-            &mut materials,
-            &mut road_network,
-            &road_query,
-            &intersection_query,
-            house_entity,
-            &mut house,
-            &factory_entities,
-        ) {
-            bevy::log::error!("Failed to update house {:?}: {:#}", house_entity, e);
+    for (house_entity, mut house) in house_query.iter_mut() {
+        // Clean up car reference if car was despawned
+        if let Some(car_entity) = house.car {
+            if commands.get_entity(car_entity.0).is_err() {
+                house.car = None;
+            }
+        }
+        
+        // Only spawn if this house doesn't have a car out
+        if house.car.is_none() {
+            // Choose a random factory from those with high demand
+            let factory_index = rand::rng().random_range(0..factories_with_demand.len());
+            let factory_entity = factories_with_demand[factory_index];
+            
+            // Try to reserve a worker slot at this factory
+            let Ok((_, mut factory)) = factory_query.get_mut(factory_entity) else {
+                continue;
+            };
+            
+            if !try_reserve_worker(&mut factory) {
+                // Factory no longer needs workers
+                continue;
+            }
+            
+            // Factory accepted! Now spawn the car
+            let house_intersection = IntersectionEntity(house_entity);
+            
+            let Some(connected_roads) = road_network.get_connected_roads(house_intersection) else {
+                bevy::log::error!("House intersection {:?} not found in road network", house_entity);
+                continue;
+            };
+
+            if connected_roads.is_empty() {
+                bevy::log::error!("No roads connected to house {:?}", house_entity);
+                continue;
+            }
+
+            let (road_entity, _) = connected_roads[0];
+
+            match spawn_car(
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                &mut road_network,
+                &road_query,
+                &intersection_query,
+                house_intersection,
+                road_entity.0,
+                factory_entity,
+                Some(house_intersection),
+            ) {
+                Ok(car_entity) => {
+                    house.car = Some(car_entity);
+                    bevy::log::info!(
+                        "House {:?} spawned car {:?} heading to factory {:?}",
+                        house_entity,
+                        car_entity.0,
+                        factory_entity
+                    );
+                }
+                Err(e) => {
+                    bevy::log::error!("Failed to spawn car from house {:?}: {:#}", house_entity, e);
+                }
+            }
         }
     }
 }
@@ -201,6 +190,6 @@ pub struct HousePlugin;
 
 impl Plugin for HousePlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, update_houses);
+        app.add_systems(FixedUpdate, spawn_workers);
     }
 }
