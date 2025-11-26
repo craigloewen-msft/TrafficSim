@@ -2,7 +2,8 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::Position;
+use crate::simulation::{IntersectionId, HouseId, FactoryId, ShopId, RoadId, SimRoad, Position};
+use crate::simulation::SimRoadNetwork;
 use super::components::{
     DemandIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink, 
     RoadLink, ShopLink, SimSynced, SimWorldResource,
@@ -32,23 +33,34 @@ fn spawn_intersections(
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
 ) {
+    for (id, intersection) in &world.intersections {
+        spawn_intersection_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+    }
+}
+
+/// Spawn a single intersection visual
+pub fn spawn_intersection_visual(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    id: IntersectionId,
+    pos: &Position,
+    mappings: &mut ResMut<EntityMappings>,
+) {
     const INTERSECTION_SIZE: f32 = 0.6;
     const INTERSECTION_HEIGHT: f32 = 0.03;
     let intersection_color = Color::srgb(0.3, 0.3, 0.3);
 
-    for (id, intersection) in &world.intersections {
-        let pos = &intersection.position;
-        let entity = commands
-            .spawn((
-                SimSynced,
-                IntersectionLink(*id),
-                Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
-                MeshMaterial3d(materials.add(intersection_color)),
-                Transform::from_translation(Vec3::new(pos.x, INTERSECTION_HEIGHT / 2.0, pos.z)),
-            ))
-            .id();
-        mappings.intersections.insert(*id, entity);
-    }
+    let entity = commands
+        .spawn((
+            SimSynced,
+            IntersectionLink(id),
+            Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
+            MeshMaterial3d(materials.add(intersection_color)),
+            Transform::from_translation(Vec3::new(pos.x, INTERSECTION_HEIGHT / 2.0, pos.z)),
+        ))
+        .id();
+    mappings.intersections.insert(id, entity);
 }
 
 fn spawn_roads(
@@ -58,10 +70,6 @@ fn spawn_roads(
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
 ) {
-    const TWO_WAY_ROAD_WIDTH: f32 = 0.6;
-    const ROAD_HEIGHT: f32 = 0.02;
-    let road_color = Color::srgb(0.2, 0.2, 0.2);
-
     // Track which road pairs we've rendered (to avoid double-rendering two-way roads)
     let mut rendered_road_pairs: std::collections::HashSet<(crate::simulation::IntersectionId, crate::simulation::IntersectionId)> = 
         std::collections::HashSet::new();
@@ -81,56 +89,73 @@ fn spawn_roads(
             rendered_road_pairs.insert(pair_key);
         }
 
-        let start_pos = world.road_network.get_intersection_position(road.start_intersection);
-        let end_pos = world.road_network.get_intersection_position(road.end_intersection);
+        spawn_road_visual(commands, meshes, materials, &world.road_network, *id, road, mappings);
+    }
+}
 
-        if let (Some(start), Some(end)) = (start_pos, end_pos) {
-            let length = start.distance(end);
-            let midpoint = Position::new(
-                (start.x + end.x) / 2.0,
-                (start.y + end.y) / 2.0,
-                (start.z + end.z) / 2.0,
-            );
-            let angle = start.angle_to(end);
-            let rotation = Quat::from_rotation_y(angle);
-            let width = if road.is_two_way { TWO_WAY_ROAD_WIDTH } else { 0.4 };
+/// Spawn a single road visual
+pub fn spawn_road_visual(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    road_network: &SimRoadNetwork,
+    id: RoadId,
+    road: &SimRoad,
+    mappings: &mut ResMut<EntityMappings>,
+) {
+    const TWO_WAY_ROAD_WIDTH: f32 = 0.6;
+    const ROAD_HEIGHT: f32 = 0.02;
+    let road_color = Color::srgb(0.2, 0.2, 0.2);
 
-            let entity = commands
-                .spawn((
-                    SimSynced,
-                    RoadLink(*id),
-                    Mesh3d(meshes.add(Cuboid::new(width, ROAD_HEIGHT, length))),
-                    MeshMaterial3d(materials.add(road_color)),
-                    Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
-                        .with_rotation(rotation),
-                ))
-                .id();
-            mappings.roads.insert(*id, entity);
+    let start_pos = road_network.get_intersection_position(road.start_intersection);
+    let end_pos = road_network.get_intersection_position(road.end_intersection);
 
-            // Add direction arrows
+    if let (Some(start), Some(end)) = (start_pos, end_pos) {
+        let length = start.distance(end);
+        let midpoint = Position::new(
+            (start.x + end.x) / 2.0,
+            (start.y + end.y) / 2.0,
+            (start.z + end.z) / 2.0,
+        );
+        let angle = start.angle_to(end);
+        let rotation = Quat::from_rotation_y(angle);
+        let width = if road.is_two_way { TWO_WAY_ROAD_WIDTH } else { 0.4 };
+
+        let entity = commands
+            .spawn((
+                SimSynced,
+                RoadLink(id),
+                Mesh3d(meshes.add(Cuboid::new(width, ROAD_HEIGHT, length))),
+                MeshMaterial3d(materials.add(road_color)),
+                Transform::from_translation(Vec3::new(midpoint.x, ROAD_HEIGHT / 2.0, midpoint.z))
+                    .with_rotation(rotation),
+            ))
+            .id();
+        mappings.roads.insert(id, entity);
+
+        // Add direction arrows
+        spawn_direction_arrows(
+            commands,
+            meshes,
+            materials,
+            start,
+            end,
+            if road.is_two_way { -0.15 } else { 0.0 },
+            entity,
+            false,
+        );
+        
+        if road.is_two_way {
             spawn_direction_arrows(
                 commands,
                 meshes,
                 materials,
-                start,
                 end,
-                if road.is_two_way { -0.15 } else { 0.0 },
+                start,
+                0.15,
                 entity,
-                false,
+                true,
             );
-            
-            if road.is_two_way {
-                spawn_direction_arrows(
-                    commands,
-                    meshes,
-                    materials,
-                    end,
-                    start,
-                    0.15,
-                    entity,
-                    true,
-                );
-            }
         }
     }
 }
@@ -199,35 +224,46 @@ fn spawn_houses(
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
 ) {
+    for (id, house) in &world.houses {
+        if let Some(intersection) = world.intersections.get(&house.intersection_id) {
+            spawn_house_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+        }
+    }
+}
+
+/// Spawn a single house visual
+pub fn spawn_house_visual(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    id: HouseId,
+    pos: &Position,
+    mappings: &mut ResMut<EntityMappings>,
+) {
     const HOUSE_SIZE: f32 = 1.0;
     let house_color = Color::srgb(0.7, 0.6, 0.4);
 
-    for (id, house) in &world.houses {
-        if let Some(intersection) = world.intersections.get(&house.intersection_id) {
-            let pos = &intersection.position;
-            let entity = commands
-                .spawn((
-                    SimSynced,
-                    HouseLink(*id),
-                    Mesh3d(meshes.add(Cuboid::new(HOUSE_SIZE, HOUSE_SIZE, HOUSE_SIZE))),
-                    MeshMaterial3d(materials.add(house_color)),
-                    Transform::from_translation(Vec3::new(pos.x, HOUSE_SIZE / 2.0, pos.z)),
-                ))
-                .id();
-            mappings.houses.insert(*id, entity);
+    let entity = commands
+        .spawn((
+            SimSynced,
+            HouseLink(id),
+            Mesh3d(meshes.add(Cuboid::new(HOUSE_SIZE, HOUSE_SIZE, HOUSE_SIZE))),
+            MeshMaterial3d(materials.add(house_color)),
+            Transform::from_translation(Vec3::new(pos.x, HOUSE_SIZE / 2.0, pos.z)),
+        ))
+        .id();
+    mappings.houses.insert(id, entity);
 
-            // Add demand indicator
-            let indicator = commands
-                .spawn((
-                    DemandIndicator,
-                    Mesh3d(meshes.add(Sphere::new(0.2))),
-                    MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
-                    Transform::from_translation(Vec3::new(0.0, 1.2, 0.0)),
-                ))
-                .id();
-            commands.entity(entity).add_child(indicator);
-        }
-    }
+    // Add demand indicator
+    let indicator = commands
+        .spawn((
+            DemandIndicator,
+            Mesh3d(meshes.add(Sphere::new(0.2))),
+            MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
+            Transform::from_translation(Vec3::new(0.0, 1.2, 0.0)),
+        ))
+        .id();
+    commands.entity(entity).add_child(indicator);
 }
 
 fn spawn_factories(
@@ -237,35 +273,46 @@ fn spawn_factories(
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
 ) {
+    for (id, factory) in &world.factories {
+        if let Some(intersection) = world.intersections.get(&factory.intersection_id) {
+            spawn_factory_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+        }
+    }
+}
+
+/// Spawn a single factory visual
+pub fn spawn_factory_visual(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    id: FactoryId,
+    pos: &Position,
+    mappings: &mut ResMut<EntityMappings>,
+) {
     const FACTORY_SIZE: f32 = 1.5;
     let factory_color = Color::srgb(0.5, 0.5, 0.7);
 
-    for (id, factory) in &world.factories {
-        if let Some(intersection) = world.intersections.get(&factory.intersection_id) {
-            let pos = &intersection.position;
-            let entity = commands
-                .spawn((
-                    SimSynced,
-                    FactoryLink(*id),
-                    Mesh3d(meshes.add(Cuboid::new(FACTORY_SIZE, FACTORY_SIZE, FACTORY_SIZE))),
-                    MeshMaterial3d(materials.add(factory_color)),
-                    Transform::from_translation(Vec3::new(pos.x, FACTORY_SIZE / 2.0, pos.z)),
-                ))
-                .id();
-            mappings.factories.insert(*id, entity);
+    let entity = commands
+        .spawn((
+            SimSynced,
+            FactoryLink(id),
+            Mesh3d(meshes.add(Cuboid::new(FACTORY_SIZE, FACTORY_SIZE, FACTORY_SIZE))),
+            MeshMaterial3d(materials.add(factory_color)),
+            Transform::from_translation(Vec3::new(pos.x, FACTORY_SIZE / 2.0, pos.z)),
+        ))
+        .id();
+    mappings.factories.insert(id, entity);
 
-            // Add demand indicator
-            let indicator = commands
-                .spawn((
-                    DemandIndicator,
-                    Mesh3d(meshes.add(Sphere::new(0.25))),
-                    MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
-                    Transform::from_translation(Vec3::new(0.0, 1.5, 0.0)),
-                ))
-                .id();
-            commands.entity(entity).add_child(indicator);
-        }
-    }
+    // Add demand indicator
+    let indicator = commands
+        .spawn((
+            DemandIndicator,
+            Mesh3d(meshes.add(Sphere::new(0.25))),
+            MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
+            Transform::from_translation(Vec3::new(0.0, 1.5, 0.0)),
+        ))
+        .id();
+    commands.entity(entity).add_child(indicator);
 }
 
 fn spawn_shops(
@@ -275,33 +322,44 @@ fn spawn_shops(
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
 ) {
+    for (id, shop) in &world.shops {
+        if let Some(intersection) = world.intersections.get(&shop.intersection_id) {
+            spawn_shop_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+        }
+    }
+}
+
+/// Spawn a single shop visual
+pub fn spawn_shop_visual(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    id: ShopId,
+    pos: &Position,
+    mappings: &mut ResMut<EntityMappings>,
+) {
     const SHOP_SIZE: f32 = 1.2;
     let shop_color = Color::srgb(0.8, 0.4, 0.6);
 
-    for (id, shop) in &world.shops {
-        if let Some(intersection) = world.intersections.get(&shop.intersection_id) {
-            let pos = &intersection.position;
-            let entity = commands
-                .spawn((
-                    SimSynced,
-                    ShopLink(*id),
-                    Mesh3d(meshes.add(Cuboid::new(SHOP_SIZE, SHOP_SIZE, SHOP_SIZE))),
-                    MeshMaterial3d(materials.add(shop_color)),
-                    Transform::from_translation(Vec3::new(pos.x, SHOP_SIZE / 2.0, pos.z)),
-                ))
-                .id();
-            mappings.shops.insert(*id, entity);
+    let entity = commands
+        .spawn((
+            SimSynced,
+            ShopLink(id),
+            Mesh3d(meshes.add(Cuboid::new(SHOP_SIZE, SHOP_SIZE, SHOP_SIZE))),
+            MeshMaterial3d(materials.add(shop_color)),
+            Transform::from_translation(Vec3::new(pos.x, SHOP_SIZE / 2.0, pos.z)),
+        ))
+        .id();
+    mappings.shops.insert(id, entity);
 
-            // Add demand indicator
-            let indicator = commands
-                .spawn((
-                    DemandIndicator,
-                    Mesh3d(meshes.add(Sphere::new(0.22))),
-                    MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
-                    Transform::from_translation(Vec3::new(0.0, 1.3, 0.0)),
-                ))
-                .id();
-            commands.entity(entity).add_child(indicator);
-        }
-    }
+    // Add demand indicator
+    let indicator = commands
+        .spawn((
+            DemandIndicator,
+            Mesh3d(meshes.add(Sphere::new(0.22))),
+            MeshMaterial3d(materials.add(Color::srgb(0.0, 1.0, 0.0))),
+            Transform::from_translation(Vec3::new(0.0, 1.3, 0.0)),
+        ))
+        .id();
+    commands.entity(entity).add_child(indicator);
 }

@@ -285,4 +285,177 @@ impl SimRoadNetwork {
     pub fn intersection_positions(&self) -> &HashMap<IntersectionId, Position> {
         &self.intersection_positions
     }
+
+    /// Remove a road from the network
+    /// Returns the cars that were on the road
+    pub fn remove_road(&mut self, road_id: RoadId) -> Result<Vec<CarId>> {
+        let road = self
+            .roads
+            .remove(&road_id)
+            .context("Road not found")?;
+
+        let start_node = self
+            .intersection_to_node
+            .get(&road.start_intersection)
+            .context("Start intersection not found")?;
+
+        let end_node = self
+            .intersection_to_node
+            .get(&road.end_intersection)
+            .context("End intersection not found")?;
+
+        // Find and remove the edge
+        let edge_to_remove = self
+            .graph
+            .edges(*start_node)
+            .find(|edge| edge.target() == *end_node && edge.weight().road_id == road_id)
+            .map(|edge| edge.id());
+
+        if let Some(edge_id) = edge_to_remove {
+            self.graph.remove_edge(edge_id);
+        }
+
+        // Get cars that were on this road
+        let cars = self
+            .cars_on_roads
+            .remove(&road_id)
+            .map(|car_map| car_map.values().copied().collect())
+            .unwrap_or_default();
+
+        self.path_cache.clear();
+
+        Ok(cars)
+    }
+
+    /// Remove an intersection and all connected roads
+    /// Returns (removed_road_ids, cars_on_removed_roads)
+    pub fn remove_intersection(
+        &mut self,
+        intersection_id: IntersectionId,
+    ) -> Result<(Vec<RoadId>, Vec<CarId>)> {
+        let node_index = self
+            .intersection_to_node
+            .remove(&intersection_id)
+            .context("Intersection not found")?;
+
+        self.node_to_intersection.remove(&node_index);
+        self.intersection_positions.remove(&intersection_id);
+
+        // Find all roads connected to this intersection
+        let roads_to_remove: Vec<RoadId> = self
+            .roads
+            .iter()
+            .filter(|(_, road)| {
+                road.start_intersection == intersection_id
+                    || road.end_intersection == intersection_id
+            })
+            .map(|(id, _)| *id)
+            .collect();
+
+        // Remove roads and collect affected cars
+        let mut affected_cars = Vec::new();
+        for road_id in &roads_to_remove {
+            self.roads.remove(road_id);
+            if let Some(car_map) = self.cars_on_roads.remove(road_id) {
+                affected_cars.extend(car_map.values().copied());
+            }
+        }
+
+        // Remove the node from the graph (this also removes all edges)
+        self.graph.remove_node(node_index);
+
+        self.path_cache.clear();
+
+        Ok((roads_to_remove, affected_cars))
+    }
+
+    /// Get all roads starting or ending at an intersection
+    pub fn get_roads_at_intersection(&self, intersection_id: IntersectionId) -> Vec<RoadId> {
+        self.roads
+            .iter()
+            .filter(|(_, road)| {
+                road.start_intersection == intersection_id
+                    || road.end_intersection == intersection_id
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// Get all cars currently on a specific road
+    pub fn get_cars_on_road(&self, road_id: RoadId) -> Vec<CarId> {
+        self.cars_on_roads
+            .get(&road_id)
+            .map(|car_map| car_map.values().copied().collect())
+            .unwrap_or_default()
+    }
+
+    /// Remove a car from road tracking
+    pub fn remove_car_from_tracking(&mut self, car_id: CarId) {
+        for car_map in self.cars_on_roads.values_mut() {
+            car_map.retain(|_, id| *id != car_id);
+        }
+    }
+
+    /// Check if an intersection has any connected roads
+    pub fn intersection_has_roads(&self, intersection_id: IntersectionId) -> bool {
+        self.roads.values().any(|road| {
+            road.start_intersection == intersection_id || road.end_intersection == intersection_id
+        })
+    }
+
+    /// Find the closest intersection to a given position
+    pub fn find_closest_intersection(&self, position: &Position) -> Option<IntersectionId> {
+        self.intersection_positions
+            .iter()
+            .min_by(|(_, pos_a), (_, pos_b)| {
+                let dist_a = position.distance(pos_a);
+                let dist_b = position.distance(pos_b);
+                dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+            })
+            .map(|(id, _)| *id)
+    }
+
+    /// Find the closest point on any road to a given position
+    /// Returns (road_id, closest_position, distance_along_road, total_road_length)
+    pub fn find_closest_point_on_road(
+        &self,
+        position: &Position,
+    ) -> Option<(RoadId, Position, f32, f32)> {
+        let mut closest: Option<(RoadId, Position, f32, f32, f32)> = None;
+
+        for (road_id, road) in &self.roads {
+            let start_pos = self.intersection_positions.get(&road.start_intersection)?;
+            let end_pos = self.intersection_positions.get(&road.end_intersection)?;
+
+            // Calculate projection of position onto road line
+            let road_vec_x = end_pos.x - start_pos.x;
+            let road_vec_z = end_pos.z - start_pos.z;
+            let road_length_sq = road_vec_x * road_vec_x + road_vec_z * road_vec_z;
+
+            if road_length_sq < 0.001 {
+                continue;
+            }
+
+            let pos_vec_x = position.x - start_pos.x;
+            let pos_vec_z = position.z - start_pos.z;
+
+            let t = ((pos_vec_x * road_vec_x + pos_vec_z * road_vec_z) / road_length_sq)
+                .clamp(0.0, 1.0);
+
+            let closest_point = Position::new(
+                start_pos.x + t * road_vec_x,
+                start_pos.y,
+                start_pos.z + t * road_vec_z,
+            );
+
+            let distance = position.distance(&closest_point);
+            let distance_along_road = t * road.length;
+
+            if closest.is_none() || distance < closest.as_ref().unwrap().4 {
+                closest = Some((*road_id, closest_point, distance_along_road, road.length, distance));
+            }
+        }
+
+        closest.map(|(road_id, pos, dist_along, length, _)| (road_id, pos, dist_along, length))
+    }
 }
