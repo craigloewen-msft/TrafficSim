@@ -2,6 +2,14 @@
 
 ## Project Overview
 TrafficSim is a Rust-based traffic simulation built with the Bevy game engine.
+
+## Building and Testing
+- Build: `cargo build` (or `cargo build --no-default-features` for headless mode without UI dependencies)
+- Run: `cargo run` (UI mode) or `cargo run -- --ticks 100` (headless mode)
+- Test: `cargo test` (or `cargo test --no-default-features` for headless testing)
+- Lint: `cargo clippy`
+- Format: `cargo fmt`
+
 ## Architecture & Design Patterns
 
 ### ECS Pattern (Entity Component System)
@@ -10,10 +18,23 @@ TrafficSim is a Rust-based traffic simulation built with the Bevy game engine.
 - Each major concept has its own plugin: `WorldPlugin`, `RoadPlugin`, `IntersectionPlugin`, `CarPlugin`, `HousePlugin`, `FactoryPlugin`, `InterfacePlugin`
 - Systems operate on components through queries
 
-### Error Handling
-- Use `anyhow::Result` for functions that can fail
-- Provide context with `.context("Description")` when propagating errors
+### Error Handling (IMPORTANT)
+- **Always** use `anyhow::Result` for functions that can fail
+- **Always** propagate errors using the `?` operator with `.context("Description")` to add meaningful context
+- Never silently ignore errors - either handle them explicitly or propagate them
 - Log errors appropriately using `bevy::log::{error, warn, info, debug}`
+
+Example (note: `Result` here is `anyhow::Result` via the import):
+```rust
+use anyhow::{Context, Result};
+
+pub fn spawn_car(&mut self, from: IntersectionId, to: IntersectionId) -> Result<CarId> {
+    let path = self.road_network
+        .find_path(from, to)
+        .context("No path found to destination")?;
+    // ...
+}
+```
 
 ## Module Structure
 
@@ -55,4 +76,13 @@ pub struct Intersection {
 5. Include debug logging at appropriate levels
 6. Update relevant queries to include/exclude new components as needed
 7. Follow the existing module structure and plugin organization
-8. There should only ever be one source of truth or function - do not duplicate logic. E.g: There is only one 'spawn_car' function, even if cars are spawned from multiple places.
+
+### Single Source of Truth (IMPORTANT)
+**Each functionality should exist in exactly one place.** Do not duplicate logic across the codebase.
+
+Example: The `spawn_car` function exists only in `car.rs` (simulation module). Even though cars may be spawned from multiple places (houses, factories), they all call the same single `spawn_car` function.
+
+When adding new functionality:
+- Check if similar functionality already exists before creating new functions
+- If a function needs to be called from multiple places, call the existing function rather than duplicating code
+- Keep related logic together in the appropriate module
