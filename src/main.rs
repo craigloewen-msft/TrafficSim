@@ -14,7 +14,7 @@ struct Cli {
     ui: bool,
 
     /// Number of simulation ticks to run in headless mode
-    #[arg(long, default_value = "100")]
+    #[arg(long, default_value = "1000")]
     ticks: u32,
 
     /// Time delta per tick in seconds
@@ -44,28 +44,44 @@ fn main() {
 fn run_headless(ticks: u32, delta: f32) {
     println!("Running traffic simulation in headless mode...");
     println!("Ticks: {}, Delta: {}s", ticks, delta);
+    
+    // Calculate how many ticks equal 1 second of simulation time
+    let ticks_per_second = (1.0 / delta).ceil() as u32;
+    println!("Running {} ticks per second (simulated time)", ticks_per_second);
     println!();
 
     let mut world = simulation::SimWorld::create_test_world();
 
     println!("Initial state:");
     world.print_summary();
+    world.draw_map();
     println!();
 
     // Run simulation
-    for tick in 1..=ticks {
-        world.tick(delta);
+    let mut tick = 0;
+    while tick < ticks {
+        // Run ticks_per_second ticks (or remaining ticks if fewer)
+        let ticks_to_run = ticks_per_second.min(ticks - tick);
+        
+        for _ in 0..ticks_to_run {
+            tick += 1;
+            world.tick(delta);
+        }
 
-        // Print progress every 10 ticks
-        if tick % 10 == 0 {
-            println!("--- After tick {} ---", tick);
-            world.print_summary();
-            println!();
+        // Print summary after running 1 second worth of ticks
+        println!("--- After tick {} ({:.1}s simulated time) ---", tick, tick as f32 * delta);
+        world.print_summary();
+        world.draw_map();
+        println!();
+        
+        if tick < ticks {
+            std::thread::sleep(std::time::Duration::from_millis(500));
         }
     }
 
     println!("=== Final State ===");
     world.print_summary();
+    world.draw_map();
 }
 
 #[cfg(feature = "ui")]

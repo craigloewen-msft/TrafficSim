@@ -275,4 +275,14 @@ impl SimRoadNetwork {
     pub fn get_all_roads(&self) -> impl Iterator<Item = (&RoadId, &SimRoad)> {
         self.roads.iter()
     }
+
+    /// Get all roads
+    pub fn roads(&self) -> &HashMap<RoadId, SimRoad> {
+        &self.roads
+    }
+
+    /// Get all intersection positions
+    pub fn intersection_positions(&self) -> &HashMap<IntersectionId, Position> {
+        &self.intersection_positions
+    }
 }

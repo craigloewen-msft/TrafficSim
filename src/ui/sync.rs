@@ -38,7 +38,7 @@ pub fn sync_cars(
             transform.rotation = Quat::from_rotation_y(car.angle);
         } else {
             // Car no longer exists in simulation, despawn
-            commands.entity(entity).despawn_recursive();
+            commands.entity(entity).despawn();
             mappings.cars.remove(&link.0);
         }
     }

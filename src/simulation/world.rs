@@ -435,61 +435,36 @@ impl SimWorld {
         let mut world = SimWorld::new();
 
         // Create main intersections
-        let bottom = world.add_intersection(Position::new(0.0, 0.0, 20.0));
-        let top = world.add_intersection(Position::new(0.0, 0.0, -20.0));
-
-        // Connect with two-way road
-        let _ = world.add_two_way_road(bottom, top);
+        let main_intersection = world.add_intersection(Position::new(10.0, 0.0, 10.0));
 
         // Add houses connected to bottom intersection
         let house_positions = vec![
-            Position::new(-8.0, 0.0, 25.0),
-            Position::new(-4.0, 0.0, 25.0),
-            Position::new(0.0, 0.0, 26.0),
-            Position::new(4.0, 0.0, 25.0),
-            Position::new(8.0, 0.0, 25.0),
+            Position::new(0.0, 0.0, 0.0),
         ];
 
         for pos in house_positions {
             let house_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(house_intersection, bottom);
+            let _ = world.add_two_way_road(house_intersection, main_intersection);
             world.add_house(house_intersection);
         }
-
-        // Add houses connected to top intersection
-        let top_house_positions = vec![
-            Position::new(0.0, 0.0, -25.0),
-            Position::new(-4.0, 0.0, -25.0),
-            Position::new(4.0, 0.0, -25.0),
-        ];
-
-        for pos in top_house_positions {
-            let house_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(house_intersection, top);
-            world.add_house(house_intersection);
-        }
-
-        // Add factories connected to top intersection
+        // Add factories connected to main intersection
         let factory_positions = vec![
-            Position::new(-8.0, 0.0, -25.0),
-            Position::new(8.0, 0.0, -25.0),
+            Position::new(-5.0, 0.0, 15.0),
         ];
 
         for pos in factory_positions {
             let factory_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(factory_intersection, top);
+            let _ = world.add_two_way_road(factory_intersection, main_intersection);
             world.add_factory(factory_intersection);
         }
 
-        // Add shops connected to bottom intersection
         let shop_positions = vec![
-            Position::new(-8.0, 0.0, 20.0),
-            Position::new(8.0, 0.0, 20.0),
+            Position::new(15.0, 0.0, 0.0),
         ];
 
         for pos in shop_positions {
             let shop_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(shop_intersection, bottom);
+            let _ = world.add_two_way_road(shop_intersection, main_intersection);
             world.add_shop(shop_intersection);
         }
 
@@ -547,5 +522,124 @@ impl SimWorld {
                 );
             }
         }
+    }
+
+    /// Draw a visual map of the world in the terminal
+    pub fn draw_map(&self) {
+        // Find bounds of the world
+        let mut min_x = f32::INFINITY;
+        let mut max_x = f32::NEG_INFINITY;
+        let mut min_z = f32::INFINITY;
+        let mut max_z = f32::NEG_INFINITY;
+
+        for pos in self.road_network.intersection_positions().values() {
+            min_x = min_x.min(pos.x);
+            max_x = max_x.max(pos.x);
+            min_z = min_z.min(pos.z);
+            max_z = max_z.max(pos.z);
+        }
+
+        // Add padding
+        min_x -= 2.0;
+        max_x += 2.0;
+        min_z -= 2.0;
+        max_z += 2.0;
+
+        // Define grid size (characters per unit)
+        let scale = 2.0; // 2 characters per world unit
+        let width = ((max_x - min_x) * scale) as usize;
+        let height = ((max_z - min_z) * scale) as usize;
+
+        // Create grid
+        let mut grid = vec![vec![' '; width]; height];
+
+        // Helper to convert world coords to grid coords
+        let to_grid = |x: f32, z: f32| -> (usize, usize) {
+            let col = ((max_x - x) * scale) as usize;
+            // Flip the Z-axis by subtracting from max_z instead of min_z
+            let row = ((max_z - z) * scale) as usize;
+            (row.min(height - 1), col.min(width - 1))
+        };
+
+        // Draw roads
+        for road in self.road_network.roads().values() {
+            let start_pos = self.road_network.get_intersection_position(road.start_intersection).unwrap();
+            let end_pos = self.road_network.get_intersection_position(road.end_intersection).unwrap();
+            
+            let (start_row, start_col) = to_grid(start_pos.x, start_pos.z);
+            let (end_row, end_col) = to_grid(end_pos.x, end_pos.z);
+
+            // Simple line drawing (Bresenham-like)
+            let dx = (end_col as i32 - start_col as i32).abs();
+            let dy = (end_row as i32 - start_row as i32).abs();
+            let sx = if start_col < end_col { 1 } else { -1 };
+            let sy = if start_row < end_row { 1 } else { -1 };
+            
+            let mut err = dx - dy;
+            let mut x = start_col as i32;
+            let mut y = start_row as i32;
+
+            loop {
+                if x >= 0 && x < width as i32 && y >= 0 && y < height as i32 {
+                    let ux = x as usize;
+                    let uy = y as usize;
+                    if grid[uy][ux] == ' ' {
+                        grid[uy][ux] = '·';
+                    }
+                }
+
+                if x == end_col as i32 && y == end_row as i32 {
+                    break;
+                }
+
+                let e2 = 2 * err;
+                if e2 > -dy {
+                    err -= dy;
+                    x += sx;
+                }
+                if e2 < dx {
+                    err += dx;
+                    y += sy;
+                }
+            }
+        }
+
+        // Draw intersections
+        for (id, pos) in self.road_network.intersection_positions() {
+            let (row, col) = to_grid(pos.x, pos.z);
+            
+            // Check what's at this intersection
+            let has_house = self.houses.values().any(|h| h.intersection_id == *id);
+            let has_factory = self.factories.values().any(|f| f.intersection_id == *id);
+            let has_shop = self.shops.values().any(|s| s.intersection_id == *id);
+
+            grid[row][col] = if has_house {
+                'H'
+            } else if has_factory {
+                'F'
+            } else if has_shop {
+                'S'
+            } else {
+                '+'
+            };
+        }
+
+        // Draw cars
+        for car in self.cars.values() {
+            let (row, col) = to_grid(car.position.x, car.position.z);
+            if grid[row][col] == ' ' || grid[row][col] == '·' {
+                grid[row][col] = 'C';
+            }
+        }
+
+        // Print the grid
+        println!("\n=== World Map ===");
+        println!("Legend: H=House, F=Factory, S=Shop, +=Intersection, C=Car, ·=Road");
+        println!();
+        for row in &grid {
+            let line: String = row.iter().collect();
+            println!("{}", line);
+        }
+        println!();
     }
 }
