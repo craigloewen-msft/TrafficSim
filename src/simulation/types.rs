@@ -7,6 +7,24 @@
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimId(pub usize);
 
+/// Type of vehicle in the simulation
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VehicleType {
+    /// Regular car from a house
+    Car,
+    /// Delivery truck from a factory
+    Truck,
+}
+
+/// The type of trip a vehicle is making
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TripType {
+    /// Going to destination (work for cars, delivery for trucks)
+    Outbound,
+    /// Returning to origin (home for cars, factory for trucks)
+    Return,
+}
+
 /// A wrapper type for intersection IDs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct IntersectionId(pub SimId);

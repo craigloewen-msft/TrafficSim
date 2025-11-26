@@ -16,7 +16,7 @@ mod world;
 #[allow(unused_imports)]
 pub use types::{
     CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
-    CAR_LENGTH, INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
+    TripType, VehicleType, CAR_LENGTH, INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
 };
 #[allow(unused_imports)]
 pub use road_network::SimRoadNetwork;
