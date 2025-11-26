@@ -272,3 +272,19 @@ fn run_with_ui() {
         .add_plugins(ui::TrafficSimUIPlugin)
         .run();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_simulation_basic() {
+        // Run a basic simulation test with default parameters
+        let ticks = 900;
+        let delta = 0.1;
+        let seed = 42;
+        
+        let success = run_test_simulation(ticks, delta, seed);
+        assert!(success, "Simulation test failed - check output for details");
+    }
+}
