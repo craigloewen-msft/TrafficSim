@@ -14,7 +14,7 @@ use bevy::prelude::*;
 pub use components::{EntityMappings, SimWorldResource};
 
 use components::*;
-use input::handle_input;
+use input::{handle_camera_mouse, handle_camera_movement, handle_input};
 use spawner::spawn_initial_visuals;
 use sync::{sync_cars, tick_simulation, update_factory_indicators, update_shop_indicators};
 use world::setup_world;
@@ -26,6 +26,7 @@ impl Plugin for TrafficSimUIPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SimWorldResource>()
             .init_resource::<EntityMappings>()
+            .init_resource::<CameraSettings>()
             .add_systems(Startup, (setup_world, spawn_initial_visuals.after(setup_world)))
             .add_systems(FixedUpdate, tick_simulation)
             .add_systems(
@@ -35,6 +36,8 @@ impl Plugin for TrafficSimUIPlugin {
                     update_factory_indicators,
                     update_shop_indicators,
                     handle_input,
+                    handle_camera_movement,
+                    handle_camera_mouse,
                 ),
             );
     }

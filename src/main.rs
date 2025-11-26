@@ -89,6 +89,16 @@ fn run_with_ui() {
     use bevy::prelude::*;
     use bevy::log::LogPlugin;
 
+    println!("Starting Traffic Sim UI...");
+    println!();
+    println!("Camera Controls:");
+    println!("  W/A/S/D     - Move camera");
+    println!("  Q/E         - Rotate camera around center");
+    println!("  Z/X         - Zoom in/out");
+    println!("  Click+Drag  - Orbital rotation");
+    println!("  ESC         - Exit");
+    println!();
+
     App::new()
         .add_plugins(
             DefaultPlugins

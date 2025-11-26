@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 
-use super::components::Ground;
+use super::components::{Ground, MainCamera};
 
 /// System to setup the world environment (ground, lighting, camera)
 pub fn setup_world(
@@ -12,6 +12,7 @@ pub fn setup_world(
 ) {
     // Spawn a 3D camera with top-down view
     commands.spawn((
+        MainCamera,
         Camera3d::default(),
         Transform::from_xyz(0.0, 70.0, 0.0).looking_at(Vec3::ZERO, Vec3::Z),
     ));

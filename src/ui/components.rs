@@ -21,6 +21,28 @@ impl Default for SimWorldResource {
 #[derive(Component)]
 pub struct Ground;
 
+/// Marker component for the main camera
+#[derive(Component)]
+pub struct MainCamera;
+
+/// Resource to control camera movement settings
+#[derive(Resource)]
+pub struct CameraSettings {
+    pub movement_speed: f32,
+    pub rotation_speed: f32,
+    pub zoom_speed: f32,
+}
+
+impl Default for CameraSettings {
+    fn default() -> Self {
+        Self {
+            movement_speed: 50.0,
+            rotation_speed: 1.0,
+            zoom_speed: 30.0,
+        }
+    }
+}
+
 /// Marker for entities synced from simulation
 #[derive(Component)]
 pub struct SimSynced;
