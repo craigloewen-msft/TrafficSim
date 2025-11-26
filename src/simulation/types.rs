@@ -1,5 +1,5 @@
 //! Core types for the traffic simulation
-//! 
+//!
 //! These are standalone types that don't depend on Bevy.
 
 /// A unique identifier for simulation entities
@@ -91,7 +91,11 @@ impl Position {
 
 impl Default for Position {
     fn default() -> Self {
-        Self { x: 0.0, y: 0.0, z: 0.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        }
     }
 }
 
@@ -117,7 +121,7 @@ impl SimRoad {
     ) -> Self {
         let length = start_pos.distance(end_pos);
         let angle = start_pos.angle_to(end_pos);
-        
+
         Self {
             id,
             start_intersection,

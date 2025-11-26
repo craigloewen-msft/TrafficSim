@@ -2,17 +2,14 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::CarId;
 use super::components::{
-    CarLink, DemandIndicator, EntityMappings, FactoryLink, ShopLink, 
-    SimSynced, SimWorldResource,
+    CarLink, DemandIndicator, EntityMappings, FactoryLink, GlobalDemandText, ShopLink, SimSynced,
+    SimWorldResource,
 };
+use crate::simulation::CarId;
 
 /// System to run simulation tick
-pub fn tick_simulation(
-    time: Res<Time>,
-    mut sim_world: ResMut<SimWorldResource>,
-) {
+pub fn tick_simulation(time: Res<Time>, mut sim_world: ResMut<SimWorldResource>) {
     sim_world.0.tick(time.delta_secs());
 }
 
@@ -30,7 +27,7 @@ pub fn sync_cars(
 
     // Update existing cars and track which ones still exist
     let mut existing_car_ids: std::collections::HashSet<CarId> = std::collections::HashSet::new();
-    
+
     for (entity, link, mut transform) in car_query.iter_mut() {
         if let Some(car) = world.cars.get(&link.0) {
             existing_car_ids.insert(link.0);
@@ -69,13 +66,14 @@ pub fn update_factory_indicators(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
-    
+
     for (link, children) in factory_query.iter() {
         if let Some(factory) = sim_world.0.factories.get(&link.0) {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        let demand_ratio = (factory.labor_demand / (LABOR_DEMAND_THRESHOLD * 2.0)).min(1.0);
+                        let demand_ratio =
+                            (factory.labor_demand / (LABOR_DEMAND_THRESHOLD * 2.0)).min(1.0);
                         if demand_ratio < 0.5 {
                             let t = demand_ratio * 2.0;
                             material.base_color = Color::srgb(t, 1.0, 0.0);
@@ -98,13 +96,14 @@ pub fn update_shop_indicators(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     const PRODUCT_DEMAND_THRESHOLD: f32 = 10.0;
-    
+
     for (link, children) in shop_query.iter() {
         if let Some(shop) = sim_world.0.shops.get(&link.0) {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        let demand_ratio = (shop.product_demand / (PRODUCT_DEMAND_THRESHOLD * 2.0)).min(1.0);
+                        let demand_ratio =
+                            (shop.product_demand / (PRODUCT_DEMAND_THRESHOLD * 2.0)).min(1.0);
                         if demand_ratio < 0.5 {
                             let t = demand_ratio * 2.0;
                             material.base_color = Color::srgb(t, 1.0, 0.0);
@@ -114,6 +113,31 @@ pub fn update_shop_indicators(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/// System to update global demand text in the UI toolbar
+pub fn update_global_demand_text(
+    sim_world: Res<SimWorldResource>,
+    mut text_query: Query<(&GlobalDemandText, &mut Text)>,
+) {
+    let demand = sim_world.0.calculate_global_demand();
+
+    for (demand_type, mut text) in text_query.iter_mut() {
+        match demand_type {
+            GlobalDemandText::FactoriesWaiting => {
+                **text = format!(
+                    "Factories: {}/{}",
+                    demand.factories_waiting, demand.total_factories
+                );
+            }
+            GlobalDemandText::ShopsWaiting => {
+                **text = format!("Shops: {}/{}", demand.shops_waiting, demand.total_shops);
+            }
+            GlobalDemandText::HousesWaiting => {
+                **text = format!("Houses: {}/{}", demand.houses_waiting, demand.total_houses);
             }
         }
     }

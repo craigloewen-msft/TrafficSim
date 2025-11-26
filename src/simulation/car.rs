@@ -1,5 +1,5 @@
 //! Car movement logic for the traffic simulation
-//! 
+//!
 //! Standalone implementation that doesn't depend on Bevy.
 
 use anyhow::{Context, Result};
@@ -15,8 +15,8 @@ use super::types::{
 /// Result of a car update indicating what action should be taken
 #[derive(Debug, Clone)]
 pub enum CarUpdateResult {
-    Continue,                              // Car continues moving
-    Despawn,                               // Car should be despawned
+    Continue,                             // Car continues moving
+    Despawn,                              // Car should be despawned
     ArrivedAtDestination(IntersectionId), // Car arrived at destination
 }
 

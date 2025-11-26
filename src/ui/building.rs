@@ -3,45 +3,133 @@
 use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 
-use crate::simulation::Position;
 use super::components::{
-    BuildModeButton, BuildingMode, BuildingState, EntityMappings, GhostPreview,
+    BuildModeButton, BuildingMode, BuildingState, EntityMappings, GhostPreview, GlobalDemandText,
     MainCamera, SimWorldResource,
 };
 use super::spawner::{
-    spawn_factory_visual, spawn_house_visual, spawn_intersection_visual, 
-    spawn_road_visual, spawn_shop_visual,
+    spawn_factory_visual, spawn_house_visual, spawn_intersection_visual, spawn_road_visual,
+    spawn_shop_visual,
 };
+use crate::simulation::Position;
 
 /// System to setup the building mode UI
 pub fn setup_building_ui(mut commands: Commands) {
+    // Create global demand toolbar at top of screen
+    commands
+        .spawn((Node {
+            width: Val::Percent(100.0),
+            height: Val::Auto,
+            position_type: PositionType::Absolute,
+            top: Val::Px(10.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(20.0),
+            ..default()
+        },))
+        .with_children(|parent| {
+            // Global Demand label
+            parent.spawn((
+                Text::new("Global Demand:"),
+                TextFont {
+                    font_size: 16.0,
+                    ..default()
+                },
+                TextColor(Color::WHITE),
+            ));
+
+            // Factories waiting
+            spawn_demand_text(
+                parent,
+                GlobalDemandText::FactoriesWaiting,
+                "Factories: 0/0",
+                Color::srgb(0.5, 0.5, 0.7),
+            );
+
+            // Shops waiting
+            spawn_demand_text(
+                parent,
+                GlobalDemandText::ShopsWaiting,
+                "Shops: 0/0",
+                Color::srgb(0.8, 0.4, 0.6),
+            );
+
+            // Houses waiting
+            spawn_demand_text(
+                parent,
+                GlobalDemandText::HousesWaiting,
+                "Houses: 0/0",
+                Color::srgb(0.7, 0.6, 0.4),
+            );
+        });
+
     // Create UI container at bottom of screen
     commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Auto,
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(20.0),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                column_gap: Val::Px(10.0),
-                ..default()
-            },
-        ))
+        .spawn((Node {
+            width: Val::Percent(100.0),
+            height: Val::Auto,
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(20.0),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            column_gap: Val::Px(10.0),
+            ..default()
+        },))
         .with_children(|parent| {
             // Road button
-            spawn_build_button(parent, BuildingMode::Road, "Road [1]", Color::srgb(0.3, 0.3, 0.3));
+            spawn_build_button(
+                parent,
+                BuildingMode::Road,
+                "Road [1]",
+                Color::srgb(0.3, 0.3, 0.3),
+            );
             // House button
-            spawn_build_button(parent, BuildingMode::House, "House [2]", Color::srgb(0.7, 0.6, 0.4));
+            spawn_build_button(
+                parent,
+                BuildingMode::House,
+                "House [2]",
+                Color::srgb(0.7, 0.6, 0.4),
+            );
             // Factory button
-            spawn_build_button(parent, BuildingMode::Factory, "Factory [3]", Color::srgb(0.5, 0.5, 0.7));
+            spawn_build_button(
+                parent,
+                BuildingMode::Factory,
+                "Factory [3]",
+                Color::srgb(0.5, 0.5, 0.7),
+            );
             // Shop button
-            spawn_build_button(parent, BuildingMode::Shop, "Shop [4]", Color::srgb(0.8, 0.4, 0.6));
+            spawn_build_button(
+                parent,
+                BuildingMode::Shop,
+                "Shop [4]",
+                Color::srgb(0.8, 0.4, 0.6),
+            );
         });
 }
 
-fn spawn_build_button(parent: &mut ChildSpawnerCommands, mode: BuildingMode, text: &str, color: Color) {
+fn spawn_demand_text(
+    parent: &mut ChildSpawnerCommands,
+    demand_type: GlobalDemandText,
+    text: &str,
+    color: Color,
+) {
+    parent.spawn((
+        demand_type,
+        Text::new(text),
+        TextFont {
+            font_size: 14.0,
+            ..default()
+        },
+        TextColor(color),
+    ));
+}
+
+fn spawn_build_button(
+    parent: &mut ChildSpawnerCommands,
+    mode: BuildingMode,
+    text: &str,
+    color: Color,
+) {
     parent
         .spawn((
             BuildModeButton(mode),
@@ -70,7 +158,12 @@ fn spawn_build_button(parent: &mut ChildSpawnerCommands, mode: BuildingMode, tex
 pub fn handle_build_buttons(
     mut building_state: ResMut<BuildingState>,
     mut interaction_query: Query<
-        (&Interaction, &BuildModeButton, &mut BackgroundColor, &mut BorderColor),
+        (
+            &Interaction,
+            &BuildModeButton,
+            &mut BackgroundColor,
+            &mut BorderColor,
+        ),
         Changed<Interaction>,
     >,
 ) {
@@ -97,7 +190,7 @@ pub fn handle_build_buttons(
                 });
             }
         }
-        
+
         // Update background to show selected state
         let base_color = match button.0 {
             BuildingMode::Road => Color::srgb(0.3, 0.3, 0.3),
@@ -106,7 +199,7 @@ pub fn handle_build_buttons(
             BuildingMode::Shop => Color::srgb(0.8, 0.4, 0.6),
             BuildingMode::None => Color::srgb(0.5, 0.5, 0.5),
         };
-        
+
         if building_state.mode == button.0 {
             // Brighten when selected (clamp to prevent overflow)
             bg_color.0 = Color::srgba(
@@ -198,10 +291,18 @@ pub fn update_cursor_position(
 
     // Check for snapping
     let snap_distance = building_state.snap_distance;
-    
+
     // First check for nearby intersection
-    if let Some(closest_intersection) = sim_world.0.road_network.find_closest_intersection(&position) {
-        if let Some(intersection_pos) = sim_world.0.road_network.get_intersection_position(closest_intersection) {
+    if let Some(closest_intersection) = sim_world
+        .0
+        .road_network
+        .find_closest_intersection(&position)
+    {
+        if let Some(intersection_pos) = sim_world
+            .0
+            .road_network
+            .get_intersection_position(closest_intersection)
+        {
             if position.distance(intersection_pos) <= snap_distance {
                 building_state.snapped_position = Some(*intersection_pos);
                 return;
@@ -210,7 +311,11 @@ pub fn update_cursor_position(
     }
 
     // Then check for nearby road (for splitting)
-    if let Some((_, closest_point, _, _)) = sim_world.0.road_network.find_closest_point_on_road(&position) {
+    if let Some((_, closest_point, _, _)) = sim_world
+        .0
+        .road_network
+        .find_closest_point_on_road(&position)
+    {
         if position.distance(&closest_point) <= snap_distance {
             building_state.snapped_position = Some(closest_point);
             return;
@@ -238,7 +343,8 @@ pub fn update_ghost_preview(
         return;
     }
 
-    let position = building_state.snapped_position
+    let position = building_state
+        .snapped_position
         .or(building_state.cursor_position);
 
     let Some(pos) = position else {
@@ -265,11 +371,8 @@ pub fn update_ghost_preview(
             if let Some(start) = building_state.road_start {
                 let length = start.distance(&pos);
                 if length > 0.1 {
-                    let midpoint = Position::new(
-                        (start.x + pos.x) / 2.0,
-                        0.0,
-                        (start.z + pos.z) / 2.0,
-                    );
+                    let midpoint =
+                        Position::new((start.x + pos.x) / 2.0, 0.0, (start.z + pos.z) / 2.0);
                     let angle = start.angle_to(&pos);
 
                     commands.spawn((
@@ -365,7 +468,8 @@ pub fn handle_placement_click(
         return;
     }
 
-    let position = building_state.snapped_position
+    let position = building_state
+        .snapped_position
         .or(building_state.cursor_position);
 
     let Some(pos) = position else {
@@ -435,13 +539,14 @@ pub fn handle_placement_click(
         BuildingMode::House | BuildingMode::Factory | BuildingMode::Shop => {
             // For buildings, find or create an intersection at this position
             let snap_distance = building_state.snap_distance;
-            let intersection_id = match find_or_create_building_intersection(world, pos, snap_distance) {
-                Ok(id) => id,
-                Err(e) => {
-                    bevy::log::warn!("Failed to create intersection for building: {}", e);
-                    return;
-                }
-            };
+            let intersection_id =
+                match find_or_create_building_intersection(world, pos, snap_distance) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        bevy::log::warn!("Failed to create intersection for building: {}", e);
+                        return;
+                    }
+                };
 
             // Spawn intersection visual if new
             if !mappings.intersections.contains_key(&intersection_id) {
@@ -523,7 +628,9 @@ fn find_or_create_building_intersection(
     }
 
     // Check if we're near a road that can be split
-    if let Some((road_id, closest_point, _, _)) = world.road_network.find_closest_point_on_road(&position) {
+    if let Some((road_id, closest_point, _, _)) =
+        world.road_network.find_closest_point_on_road(&position)
+    {
         if position.distance(&closest_point) <= snap_distance {
             let (new_intersection, _, _) = world.split_road_at_position(road_id, closest_point)?;
             return Ok(new_intersection);

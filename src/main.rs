@@ -55,10 +55,13 @@ fn main() {
 fn run_headless(ticks: u32, delta: f32) {
     println!("Running traffic simulation in headless mode...");
     println!("Ticks: {}, Delta: {}s", ticks, delta);
-    
+
     // Calculate how many ticks equal 1 second of simulation time
     let ticks_per_second = (1.0 / delta).ceil() as u32;
-    println!("Running {} ticks per second (simulated time)", ticks_per_second);
+    println!(
+        "Running {} ticks per second (simulated time)",
+        ticks_per_second
+    );
     println!();
 
     let mut world = simulation::SimWorld::create_test_world();
@@ -73,18 +76,22 @@ fn run_headless(ticks: u32, delta: f32) {
     while tick < ticks {
         // Run ticks_per_second ticks (or remaining ticks if fewer)
         let ticks_to_run = ticks_per_second.min(ticks - tick);
-        
+
         for _ in 0..ticks_to_run {
             tick += 1;
             world.tick(delta);
         }
 
         // Print summary after running 1 second worth of ticks
-        println!("--- After tick {} ({:.1}s simulated time) ---", tick, tick as f32 * delta);
+        println!(
+            "--- After tick {} ({:.1}s simulated time) ---",
+            tick,
+            tick as f32 * delta
+        );
         world.print_summary();
         world.draw_map();
         println!();
-        
+
         if tick < ticks {
             std::thread::sleep(std::time::Duration::from_millis(500));
         }
@@ -103,14 +110,14 @@ fn run_test_simulation(ticks: u32, delta: f32, seed: u64) -> bool {
     println!();
 
     let mut world = simulation::SimWorld::create_test_world_with_seed(seed);
-    
+
     // Track metrics for validation
     let initial_houses = world.houses.len();
     let initial_factories = world.factories.len();
     let initial_shops = world.shops.len();
     let initial_intersections = world.road_network.intersection_count();
     let initial_roads = world.road_network.road_count();
-    
+
     let mut max_cars_observed = 0usize;
     let mut total_deliveries = 0usize;
     let mut errors: Vec<String> = Vec::new();
@@ -118,46 +125,56 @@ fn run_test_simulation(ticks: u32, delta: f32, seed: u64) -> bool {
     // Run simulation without delays
     for tick in 1..=ticks {
         world.tick(delta);
-        
+
         // Track maximum concurrent cars
         max_cars_observed = max_cars_observed.max(world.cars.len());
-        
+
         // Validate simulation state periodically
         if tick % 100 == 0 {
             // Check for structural integrity
             if world.road_network.intersection_count() != initial_intersections {
                 errors.push(format!(
                     "Tick {}: Intersection count changed from {} to {}",
-                    tick, initial_intersections, world.road_network.intersection_count()
+                    tick,
+                    initial_intersections,
+                    world.road_network.intersection_count()
                 ));
             }
             if world.road_network.road_count() != initial_roads {
                 errors.push(format!(
                     "Tick {}: Road count changed from {} to {}",
-                    tick, initial_roads, world.road_network.road_count()
+                    tick,
+                    initial_roads,
+                    world.road_network.road_count()
                 ));
             }
             if world.houses.len() != initial_houses {
                 errors.push(format!(
                     "Tick {}: House count changed from {} to {}",
-                    tick, initial_houses, world.houses.len()
+                    tick,
+                    initial_houses,
+                    world.houses.len()
                 ));
             }
             if world.factories.len() != initial_factories {
                 errors.push(format!(
                     "Tick {}: Factory count changed from {} to {}",
-                    tick, initial_factories, world.factories.len()
+                    tick,
+                    initial_factories,
+                    world.factories.len()
                 ));
             }
             if world.shops.len() != initial_shops {
                 errors.push(format!(
                     "Tick {}: Shop count changed from {} to {}",
-                    tick, initial_shops, world.shops.len()
+                    tick,
+                    initial_shops,
+                    world.shops.len()
                 ));
             }
         }
     }
-    
+
     // Calculate total deliveries
     for shop in world.shops.values() {
         total_deliveries += shop.cars_received;
@@ -179,12 +196,16 @@ fn run_test_simulation(ticks: u32, delta: f32, seed: u64) -> bool {
         errors.push("FAIL: No cars were ever spawned during simulation".to_string());
         validation_passed = false;
     } else {
-        println!("PASS: Cars spawned successfully (max: {})", max_cars_observed);
+        println!(
+            "PASS: Cars spawned successfully (max: {})",
+            max_cars_observed
+        );
     }
 
     // Check: Road network should be intact
-    if world.road_network.intersection_count() == initial_intersections 
-        && world.road_network.road_count() == initial_roads {
+    if world.road_network.intersection_count() == initial_intersections
+        && world.road_network.road_count() == initial_roads
+    {
         println!("PASS: Road network integrity maintained");
     } else {
         errors.push("FAIL: Road network was unexpectedly modified".to_string());
@@ -192,21 +213,25 @@ fn run_test_simulation(ticks: u32, delta: f32, seed: u64) -> bool {
     }
 
     // Check: Buildings should be intact
-    if world.houses.len() == initial_houses 
-        && world.factories.len() == initial_factories 
-        && world.shops.len() == initial_shops {
+    if world.houses.len() == initial_houses
+        && world.factories.len() == initial_factories
+        && world.shops.len() == initial_shops
+    {
         println!("PASS: Building integrity maintained");
     } else {
         errors.push("FAIL: Buildings were unexpectedly modified".to_string());
         validation_passed = false;
     }
-    
+
     // Check: For longer runs, we expect some deliveries
     if ticks >= 100 && total_deliveries == 0 {
         errors.push("FAIL: No deliveries completed (simulation may be stuck)".to_string());
         validation_passed = false;
     } else if ticks >= 100 {
-        println!("PASS: Deliveries completed successfully ({})", total_deliveries);
+        println!(
+            "PASS: Deliveries completed successfully ({})",
+            total_deliveries
+        );
     }
 
     // Print any errors
@@ -230,8 +255,8 @@ fn run_test_simulation(ticks: u32, delta: f32, seed: u64) -> bool {
 
 #[cfg(feature = "ui")]
 fn run_with_ui() {
-    use bevy::prelude::*;
     use bevy::log::LogPlugin;
+    use bevy::prelude::*;
 
     println!("Starting Traffic Sim UI...");
     println!();
