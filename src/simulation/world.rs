@@ -665,8 +665,9 @@ impl SimWorld {
             if factory.truck_available() && factory.inventory > 0 && !shops_needing_products.is_empty() {
                 // Take a product for delivery
                 if factory.take_product() {
-                    // Pick first shop that needs products
-                    let shop_intersection = shops_needing_products[0];
+                    // Pick a random shop that needs products (use index based on factory id for determinism)
+                    let shop_index = factory_id.0.0 % shops_needing_products.len();
+                    let shop_intersection = shops_needing_products[shop_index];
                     trucks_to_dispatch.push((factory_id, shop_intersection));
                 }
             }
