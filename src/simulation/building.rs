@@ -4,8 +4,8 @@
 
 use super::types::{CarId, FactoryId, HouseId, IntersectionId, ShopId};
 
-/// Duration in seconds that a factory processes a car before sending it back
-pub const FACTORY_PROCESSING_TIME: f32 = 2.0;
+/// Duration in seconds that a factory processes a car (worker) before sending them back
+pub const FACTORY_WORK_TIME: f32 = 5.0;
 /// Threshold at which factories need workers
 pub const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
 /// Amount of demand reduced when a worker arrives
@@ -21,6 +21,7 @@ pub const PRODUCT_DEMAND_PER_DELIVERY: f32 = 10.0;
 pub struct SimHouse {
     pub id: HouseId,
     pub intersection_id: IntersectionId,
+    /// The car owned by this house (if out driving)
     pub car: Option<CarId>,
 }
 
@@ -39,8 +40,8 @@ impl SimHouse {
 pub struct SimFactory {
     pub id: FactoryId,
     pub intersection_id: IntersectionId,
-    /// Cars currently being processed (car_id, shop_target, time_remaining)
-    pub processing_cars: Vec<(CarId, IntersectionId, f32)>,
+    /// Workers currently at the factory (house_id, time_remaining until work done)
+    pub workers: Vec<(HouseId, f32)>,
     /// Current labor demand
     pub labor_demand: f32,
     /// Rate at which labor demand increases per second
@@ -49,6 +50,8 @@ pub struct SimFactory {
     pub inventory: u32,
     /// Maximum inventory capacity
     pub max_inventory: u32,
+    /// The truck owned by this factory (if out making delivery)
+    pub truck: Option<CarId>,
 }
 
 impl SimFactory {
@@ -56,19 +59,19 @@ impl SimFactory {
         Self {
             id,
             intersection_id,
-            processing_cars: Vec::new(),
+            workers: Vec::new(),
             labor_demand: 10.0,
             labor_demand_rate: 1.0,
             inventory: 0,
             max_inventory: 10,
+            truck: None,
         }
     }
 
-    /// Receive a car (worker arrives) and start processing
-    pub fn receive_car(&mut self, car_id: CarId, shop_target: IntersectionId) {
+    /// Receive a worker at the factory (store their house_id so we can send them home)
+    pub fn receive_worker(&mut self, house_id: HouseId) {
         self.labor_demand = (self.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
-        self.processing_cars
-            .push((car_id, shop_target, FACTORY_PROCESSING_TIME));
+        self.workers.push((house_id, FACTORY_WORK_TIME));
     }
 
     /// Try to reserve a worker slot. Returns true if accepted.
@@ -82,32 +85,28 @@ impl SimFactory {
     }
 
     /// Update the factory logic
-    /// Returns number of products produced this tick
-    pub fn update(&mut self, delta_secs: f32) -> u32 {
+    /// Returns list of house_ids for workers whose work is done (they should return home)
+    pub fn update(&mut self, delta_secs: f32) -> Vec<HouseId> {
         // Increase labor demand over time
         self.labor_demand += self.labor_demand_rate * delta_secs;
 
-        // Update processing times
-        let mut products_produced = 0;
-        self.processing_cars
-            .retain_mut(|(_car_id, _shop_target, time_remaining)| {
-                *time_remaining -= delta_secs;
-                if *time_remaining <= 0.0 {
-                    products_produced += 1;
-                    false
-                } else {
-                    true
+        // Update worker times and find those done working
+        let mut workers_done = Vec::new();
+        self.workers.retain_mut(|(house_id, time_remaining)| {
+            *time_remaining -= delta_secs;
+            if *time_remaining <= 0.0 {
+                workers_done.push(*house_id);
+                // Add to inventory when worker finishes
+                if self.inventory < self.max_inventory {
+                    self.inventory += 1;
                 }
-            });
+                false
+            } else {
+                true
+            }
+        });
 
-        // Add produced goods to inventory
-        if products_produced > 0 {
-            let space_available = self.max_inventory.saturating_sub(self.inventory);
-            let to_add = products_produced.min(space_available);
-            self.inventory += to_add;
-        }
-
-        products_produced
+        workers_done
     }
 
     /// Try to take one product from inventory for delivery
@@ -119,6 +118,11 @@ impl SimFactory {
             false
         }
     }
+
+    /// Check if the factory's truck is available
+    pub fn truck_available(&self) -> bool {
+        self.truck.is_none()
+    }
 }
 
 /// A shop in the simulation
@@ -126,7 +130,7 @@ impl SimFactory {
 pub struct SimShop {
     pub id: ShopId,
     pub intersection_id: IntersectionId,
-    /// Number of cars that have arrived
+    /// Number of deliveries received
     pub cars_received: usize,
     /// Current product demand
     pub product_demand: f32,
