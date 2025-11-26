@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::simulation::{
-    CarId, FactoryId, HouseId, IntersectionId, RoadId, ShopId, SimWorld,
+    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimWorld,
 };
 
 /// Resource wrapper for the simulation world
@@ -85,3 +85,49 @@ pub struct EntityMappings {
     pub factories: HashMap<FactoryId, Entity>,
     pub shops: HashMap<ShopId, Entity>,
 }
+
+/// Building mode types
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BuildingMode {
+    #[default]
+    None,
+    Road,
+    House,
+    Factory,
+    Shop,
+}
+
+/// State for the building system
+#[derive(Resource)]
+pub struct BuildingState {
+    /// Current building mode
+    pub mode: BuildingMode,
+    /// First point for road placement (when in Road mode)
+    pub road_start: Option<Position>,
+    /// Current mouse position on ground plane
+    pub cursor_position: Option<Position>,
+    /// Snapped position (if near an intersection or road)
+    pub snapped_position: Option<Position>,
+    /// Distance threshold for snapping
+    pub snap_distance: f32,
+}
+
+impl Default for BuildingState {
+    fn default() -> Self {
+        Self {
+            mode: BuildingMode::None,
+            road_start: None,
+            cursor_position: None,
+            snapped_position: None,
+            snap_distance: 2.0,
+        }
+    }
+}
+
+/// Marker for ghost/preview entities
+#[derive(Component)]
+pub struct GhostPreview;
+
+/// Marker for UI buttons
+#[derive(Component)]
+pub struct BuildModeButton(pub BuildingMode);

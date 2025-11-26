@@ -98,6 +98,15 @@ fn run_with_ui() {
     println!("  Click+Drag  - Orbital rotation");
     println!("  ESC         - Exit");
     println!();
+    println!("Building Controls:");
+    println!("  1           - Road mode (click two points to create a road)");
+    println!("  2           - House mode (click to place)");
+    println!("  3           - Factory mode (click to place)");
+    println!("  4           - Shop mode (click to place)");
+    println!("  Click buttons at bottom of screen to toggle modes");
+    println!();
+    println!("Building snaps to nearby intersections and roads.");
+    println!();
 
     App::new()
         .add_plugins(

@@ -139,6 +139,264 @@ impl SimWorld {
         id
     }
 
+    /// Remove a house from the world
+    /// Returns the car that was associated with the house (if any)
+    pub fn remove_house(&mut self, house_id: HouseId) -> Option<CarId> {
+        let house = self.houses.remove(&house_id)?;
+        house.car
+    }
+
+    /// Remove a factory from the world
+    pub fn remove_factory(&mut self, factory_id: FactoryId) {
+        self.factories.remove(&factory_id);
+    }
+
+    /// Remove a shop from the world
+    pub fn remove_shop(&mut self, shop_id: ShopId) {
+        self.shops.remove(&shop_id);
+    }
+
+    /// Remove a road from the world
+    /// Cars on the road will be despawned
+    pub fn remove_road(&mut self, road_id: RoadId) -> Result<()> {
+        let cars_on_road = self.road_network.remove_road(road_id)?;
+
+        // Despawn all cars that were on the removed road
+        for car_id in cars_on_road {
+            self.despawn_car(car_id);
+        }
+
+        Ok(())
+    }
+
+    /// Remove an intersection and all connected roads
+    /// Cars on affected roads will be despawned
+    /// Buildings at the intersection will be removed
+    pub fn remove_intersection(&mut self, intersection_id: IntersectionId) -> Result<()> {
+        // Remove any buildings at this intersection
+        let houses_to_remove: Vec<HouseId> = self
+            .houses
+            .iter()
+            .filter(|(_, h)| h.intersection_id == intersection_id)
+            .map(|(id, _)| *id)
+            .collect();
+
+        for house_id in houses_to_remove {
+            self.remove_house(house_id);
+        }
+
+        let factories_to_remove: Vec<FactoryId> = self
+            .factories
+            .iter()
+            .filter(|(_, f)| f.intersection_id == intersection_id)
+            .map(|(id, _)| *id)
+            .collect();
+
+        for factory_id in factories_to_remove {
+            self.remove_factory(factory_id);
+        }
+
+        let shops_to_remove: Vec<ShopId> = self
+            .shops
+            .iter()
+            .filter(|(_, s)| s.intersection_id == intersection_id)
+            .map(|(id, _)| *id)
+            .collect();
+
+        for shop_id in shops_to_remove {
+            self.remove_shop(shop_id);
+        }
+
+        // Remove the intersection from intersections collection
+        self.intersections.remove(&intersection_id);
+
+        // Remove intersection and roads from road network
+        let (_, cars_on_roads) = self.road_network.remove_intersection(intersection_id)?;
+
+        // Despawn all cars that were on removed roads
+        for car_id in cars_on_roads {
+            self.despawn_car(car_id);
+        }
+
+        // Recalculate paths for remaining cars that might have been using deleted roads
+        self.recalculate_car_paths();
+
+        Ok(())
+    }
+
+    /// Remove a two-way road (both directions)
+    /// Cars on either direction will be despawned
+    pub fn remove_two_way_road(
+        &mut self,
+        intersection_a: IntersectionId,
+        intersection_b: IntersectionId,
+    ) -> Result<()> {
+        // Find and remove both directions of the road
+        if let Ok(forward_road) = self.road_network.find_road_between(intersection_a, intersection_b) {
+            self.remove_road(forward_road)?;
+        }
+
+        if let Ok(backward_road) = self.road_network.find_road_between(intersection_b, intersection_a) {
+            self.remove_road(backward_road)?;
+        }
+
+        Ok(())
+    }
+
+    /// Despawn a car and clean up references
+    fn despawn_car(&mut self, car_id: CarId) {
+        self.cars.remove(&car_id);
+        self.road_network.remove_car_from_tracking(car_id);
+
+        // Clear house car reference
+        for house in self.houses.values_mut() {
+            if house.car == Some(car_id) {
+                house.car = None;
+            }
+        }
+    }
+
+    /// Recalculate paths for all cars that might have invalid paths
+    fn recalculate_car_paths(&mut self) {
+        let car_ids: Vec<CarId> = self.cars.keys().copied().collect();
+
+        for car_id in car_ids {
+            if let Some(car) = self.cars.get(&car_id) {
+                // Get the car's final destination
+                let destination = match car.path.last() {
+                    Some(dest) => *dest,
+                    None => continue, // No path to recalculate
+                };
+
+                // Get the current intersection the car is heading to
+                let current_target = match car.path.first() {
+                    Some(target) => *target,
+                    None => continue,
+                };
+
+                // Try to find a new path from current target to destination
+                let new_path = self.road_network.find_path(current_target, destination);
+
+                match new_path {
+                    Some(path) => {
+                        // Update the car's path
+                        if let Some(car) = self.cars.get_mut(&car_id) {
+                            car.path = std::iter::once(current_target).chain(path).collect();
+                        }
+                    }
+                    None => {
+                        // No valid path exists - despawn the car
+                        self.despawn_car(car_id);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Split a road at a given position to create a new intersection
+    /// Returns the new intersection ID and the IDs of the new roads
+    pub fn split_road_at_position(
+        &mut self,
+        road_id: RoadId,
+        split_position: Position,
+    ) -> Result<(IntersectionId, RoadId, RoadId)> {
+        let road = self
+            .road_network
+            .get_road(road_id)
+            .context("Road not found")?
+            .clone();
+
+        let start_intersection = road.start_intersection;
+        let end_intersection = road.end_intersection;
+        let is_two_way = road.is_two_way;
+
+        // Get cars that were on this road before removing it
+        let cars_on_road = self.road_network.get_cars_on_road(road_id);
+
+        // Remove the original road
+        self.road_network.remove_road(road_id)?;
+
+        // Create new intersection at split position
+        let new_intersection = self.add_intersection(split_position);
+
+        // Create new roads
+        let first_road = self.add_road(start_intersection, new_intersection, is_two_way)?;
+        let second_road = self.add_road(new_intersection, end_intersection, is_two_way)?;
+
+        // If two-way, also create reverse roads
+        if is_two_way {
+            // Remove the reverse road if it exists
+            if let Ok(reverse_road) = self.road_network.find_road_between(end_intersection, start_intersection) {
+                self.road_network.remove_road(reverse_road)?;
+            }
+
+            self.add_road(new_intersection, start_intersection, is_two_way)?;
+            self.add_road(end_intersection, new_intersection, is_two_way)?;
+        }
+
+        // Despawn cars that were on the split road (they need to recalculate)
+        for car_id in cars_on_road {
+            self.despawn_car(car_id);
+        }
+
+        Ok((new_intersection, first_road, second_road))
+    }
+
+    /// Dynamically add a two-way road between two positions
+    /// If positions are close to existing intersections, reuse them
+    /// If a position is close to an existing road, split that road
+    pub fn add_road_at_positions(
+        &mut self,
+        start_pos: Position,
+        end_pos: Position,
+        snap_distance: f32,
+    ) -> Result<(IntersectionId, IntersectionId, RoadId, RoadId)> {
+        // Find or create start intersection
+        let start_intersection = self.find_or_create_intersection(start_pos, snap_distance)?;
+        
+        // Find or create end intersection
+        let end_intersection = self.find_or_create_intersection(end_pos, snap_distance)?;
+
+        // Check if these intersections are already connected
+        if self.road_network.find_road_between(start_intersection, end_intersection).is_ok() {
+            anyhow::bail!("Road already exists between these intersections");
+        }
+
+        // Create the two-way road
+        let (forward, backward) = self.add_two_way_road(start_intersection, end_intersection)?;
+
+        Ok((start_intersection, end_intersection, forward, backward))
+    }
+
+    /// Find an existing intersection near a position, or create a new one
+    /// If the position is near an existing road, split that road
+    fn find_or_create_intersection(
+        &mut self,
+        position: Position,
+        snap_distance: f32,
+    ) -> Result<IntersectionId> {
+        // First, check if there's an existing intersection nearby
+        if let Some(closest_intersection) = self.road_network.find_closest_intersection(&position) {
+            if let Some(intersection_pos) = self.road_network.get_intersection_position(closest_intersection) {
+                if position.distance(intersection_pos) <= snap_distance {
+                    return Ok(closest_intersection);
+                }
+            }
+        }
+
+        // Check if position is close to an existing road (for splitting)
+        if let Some((road_id, closest_point, _, _)) = self.road_network.find_closest_point_on_road(&position) {
+            if position.distance(&closest_point) <= snap_distance {
+                // Split the road at this position
+                let (new_intersection, _, _) = self.split_road_at_position(road_id, closest_point)?;
+                return Ok(new_intersection);
+            }
+        }
+
+        // No nearby intersection or road - create new intersection
+        Ok(self.add_intersection(position))
+    }
+
     /// Spawn a car from a given intersection to a destination
     pub fn spawn_car(
         &mut self,
