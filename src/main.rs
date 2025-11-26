@@ -1,25 +1,7 @@
 mod simulation;
 
 #[cfg(feature = "ui")]
-mod car;
-#[cfg(feature = "ui")]
-mod factory;
-#[cfg(feature = "ui")]
-mod house;
-#[cfg(feature = "ui")]
-mod interface;
-#[cfg(feature = "ui")]
-mod intersection;
-#[cfg(feature = "ui")]
-mod road;
-#[cfg(feature = "ui")]
-mod road_network;
-#[cfg(feature = "ui")]
-mod shop;
-#[cfg(feature = "ui")]
-mod two_way_road;
-#[cfg(feature = "ui")]
-mod world;
+mod ui;
 
 use clap::Parser;
 
@@ -90,14 +72,6 @@ fn run_headless(ticks: u32, delta: f32) {
 fn run_with_ui() {
     use bevy::prelude::*;
     use bevy::log::LogPlugin;
-    use car::CarPlugin;
-    use factory::FactoryPlugin;
-    use house::HousePlugin;
-    use interface::InterfacePlugin;
-    use intersection::IntersectionPlugin;
-    use road::RoadPlugin;
-    use shop::ShopPlugin;
-    use world::WorldPlugin;
 
     App::new()
         .add_plugins(
@@ -116,19 +90,6 @@ fn run_with_ui() {
                     ..default()
                 }),
         )
-        // Add our custom plugins for each game concept
-        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, FactoryPlugin, ShopPlugin, InterfacePlugin))
-        .add_systems(Update, handle_input)
+        .add_plugins(ui::TrafficSimUIPlugin)
         .run();
-}
-
-#[cfg(feature = "ui")]
-/// Handle basic keyboard input
-fn handle_input(
-    keyboard: bevy::prelude::Res<bevy::prelude::ButtonInput<bevy::prelude::KeyCode>>,
-    mut exit: bevy::prelude::MessageWriter<bevy::prelude::AppExit>,
-) {
-    if keyboard.just_pressed(bevy::prelude::KeyCode::Escape) {
-        exit.write(bevy::prelude::AppExit::Success);
-    }
 }

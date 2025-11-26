@@ -269,4 +269,10 @@ impl SimRoadNetwork {
     pub fn intersection_count(&self) -> usize {
         self.intersection_to_node.len()
     }
+
+    /// Get all roads
+    #[allow(dead_code)]
+    pub fn get_all_roads(&self) -> impl Iterator<Item = (&RoadId, &SimRoad)> {
+        self.roads.iter()
+    }
 }

@@ -75,7 +75,7 @@ impl SimWorld {
     /// Add an intersection to the world
     pub fn add_intersection(&mut self, position: Position) -> IntersectionId {
         let id = IntersectionId(self.next_sim_id());
-        let intersection = SimIntersection::new(id, position.clone());
+        let intersection = SimIntersection::new(id, position);
         self.intersections.insert(id, intersection);
         self.road_network.add_intersection(id, position);
         id
@@ -88,17 +88,15 @@ impl SimWorld {
         end: IntersectionId,
         is_two_way: bool,
     ) -> Result<RoadId> {
-        let start_pos = self
+        let start_pos = *self
             .road_network
             .get_intersection_position(start)
-            .context("Start intersection not found")?
-            .clone();
+            .context("Start intersection not found")?;
 
-        let end_pos = self
+        let end_pos = *self
             .road_network
             .get_intersection_position(end)
-            .context("End intersection not found")?
-            .clone();
+            .context("End intersection not found")?;
 
         let id = RoadId(self.next_sim_id());
         let road = SimRoad::new(id, start, end, &start_pos, &end_pos, is_two_way);
@@ -182,11 +180,10 @@ impl SimWorld {
 
         let road_angle = road.angle;
 
-        let start_pos = self
+        let start_pos = *self
             .road_network
             .get_intersection_position(from_intersection)
-            .context("Start intersection position not found")?
-            .clone();
+            .context("Start intersection position not found")?;
 
         // Generate random speed
         let mut rng = rand::rng();

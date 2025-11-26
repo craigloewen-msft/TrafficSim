@@ -36,6 +36,7 @@ pub struct SimCar {
 }
 
 impl SimCar {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: CarId,
         speed: f32,
@@ -82,15 +83,13 @@ impl SimCar {
         let target_intersection_id = *self.path.first().context("Path is empty")?;
 
         // Get start and end intersection positions
-        let start_pos = road_network
+        let start_pos = *road_network
             .get_intersection_position(self.start_intersection)
-            .context("Start intersection not found")?
-            .clone();
+            .context("Start intersection not found")?;
 
-        let end_pos = road_network
+        let end_pos = *road_network
             .get_intersection_position(target_intersection_id)
-            .context("Target intersection not found")?
-            .clone();
+            .context("Target intersection not found")?;
 
         let road_length = current_road.length;
 
