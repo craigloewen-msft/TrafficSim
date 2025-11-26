@@ -18,8 +18,8 @@ use super::car::{CarUpdateResult, SimCar};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
-    TripType, VehicleType,
+    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
+    VehicleType,
 };
 
 /// Global demand metrics for the simulation
@@ -313,8 +313,11 @@ impl SimWorld {
     /// Despawn a car and clean up references
     fn despawn_car(&mut self, car_id: CarId) {
         // Get car info before removing
-        let car_info = self.cars.get(&car_id).map(|c| (c.origin_house, c.origin_factory));
-        
+        let car_info = self
+            .cars
+            .get(&car_id)
+            .map(|c| (c.origin_house, c.origin_factory));
+
         self.cars.remove(&car_id);
         self.road_network.remove_car_from_tracking(car_id);
 
@@ -632,7 +635,10 @@ impl SimWorld {
 
     /// Update all factories
     /// Returns (workers_done_house_ids, trucks_to_dispatch)
-    fn update_factories(&mut self, delta_secs: f32) -> (Vec<(FactoryId, HouseId)>, Vec<(FactoryId, IntersectionId)>) {
+    fn update_factories(
+        &mut self,
+        delta_secs: f32,
+    ) -> (Vec<(FactoryId, HouseId)>, Vec<(FactoryId, IntersectionId)>) {
         let mut workers_done = Vec::new();
         let mut trucks_to_dispatch = Vec::new();
 
@@ -662,11 +668,14 @@ impl SimWorld {
             }
 
             // If truck is available and there's inventory and shops need products
-            if factory.truck_available() && factory.inventory > 0 && !shops_needing_products.is_empty() {
+            if factory.truck_available()
+                && factory.inventory > 0
+                && !shops_needing_products.is_empty()
+            {
                 // Take a product for delivery
                 if factory.take_product() {
                     // Pick a random shop that needs products (use index based on factory id for determinism)
-                    let shop_index = factory_id.0.0 % shops_needing_products.len();
+                    let shop_index = factory_id.0 .0 % shops_needing_products.len();
                     let shop_intersection = shops_needing_products[shop_index];
                     trucks_to_dispatch.push((factory_id, shop_intersection));
                 }
@@ -825,15 +834,25 @@ impl SimWorld {
                 CarUpdateResult::ArrivedAtDestination(dest) => {
                     // Get car info before processing
                     let car_info = self.cars.get(&car_id).map(|c| {
-                        (c.vehicle_type, c.trip_type, c.origin_house, c.origin_factory)
+                        (
+                            c.vehicle_type,
+                            c.trip_type,
+                            c.origin_house,
+                            c.origin_factory,
+                        )
                     });
 
-                    if let Some((vehicle_type, trip_type, origin_house, origin_factory)) = car_info {
+                    if let Some((vehicle_type, trip_type, origin_house, origin_factory)) = car_info
+                    {
                         match (vehicle_type, trip_type) {
                             (VehicleType::Car, TripType::Outbound) => {
                                 // Worker arrived at factory - register them with their house_id
                                 if let Some(house_id) = origin_house {
-                                    if let Some(factory) = self.factories.values_mut().find(|f| f.intersection_id == dest) {
+                                    if let Some(factory) = self
+                                        .factories
+                                        .values_mut()
+                                        .find(|f| f.intersection_id == dest)
+                                    {
                                         factory.receive_worker(house_id);
                                     }
                                 }
@@ -853,12 +872,15 @@ impl SimWorld {
                             }
                             (VehicleType::Truck, TripType::Outbound) => {
                                 // Truck delivered to shop
-                                if let Some(shop) = self.shops.values_mut().find(|s| s.intersection_id == dest) {
+                                if let Some(shop) =
+                                    self.shops.values_mut().find(|s| s.intersection_id == dest)
+                                {
                                     shop.receive_delivery();
                                 }
                                 // Now spawn truck returning to factory
                                 if let Some(factory_id) = origin_factory {
-                                    let factory_intersection = self.factories.get(&factory_id).map(|f| f.intersection_id);
+                                    let factory_intersection =
+                                        self.factories.get(&factory_id).map(|f| f.intersection_id);
                                     if let Some(factory_intersection) = factory_intersection {
                                         // Spawn truck returning
                                         match self.spawn_vehicle(
@@ -870,13 +892,17 @@ impl SimWorld {
                                             Some(factory_id),
                                         ) {
                                             Ok(new_truck_id) => {
-                                                if let Some(factory) = self.factories.get_mut(&factory_id) {
+                                                if let Some(factory) =
+                                                    self.factories.get_mut(&factory_id)
+                                                {
                                                     factory.truck = Some(new_truck_id);
                                                 }
                                             }
                                             Err(_) => {
                                                 // Truck can't return, just clear reference
-                                                if let Some(factory) = self.factories.get_mut(&factory_id) {
+                                                if let Some(factory) =
+                                                    self.factories.get_mut(&factory_id)
+                                                {
                                                     factory.truck = None;
                                                 }
                                             }
@@ -1030,7 +1056,11 @@ impl SimWorld {
                 factory.inventory,
                 factory.max_inventory,
                 factory.workers.len(),
-                if factory.truck.is_some() { "out" } else { "home" }
+                if factory.truck.is_some() {
+                    "out"
+                } else {
+                    "home"
+                }
             );
         }
 

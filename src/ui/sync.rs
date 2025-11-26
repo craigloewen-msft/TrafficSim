@@ -2,12 +2,10 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::{CarId, VehicleType};
 use super::components::{
-    CarLink, DemandIndicator, EntityMappings, FactoryLink, GlobalDemandText, ShopLink, SimSynced,
-    SimWorldResource,
+    CarLink, DemandIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced, SimWorldResource,
 };
-use crate::simulation::CarId;
+use crate::{simulation::{CarId, VehicleType}, ui::components::GlobalDemandText};
 
 /// System to run simulation tick
 pub fn tick_simulation(time: Res<Time>, mut sim_world: ResMut<SimWorldResource>) {
@@ -53,15 +51,19 @@ pub fn sync_cars(
                 VehicleType::Car => (0.3, 0.2, CAR_LENGTH, Color::srgb(0.8, 0.2, 0.2), 0.3),
                 VehicleType::Truck => (0.4, 0.35, TRUCK_LENGTH, Color::srgb(0.2, 0.4, 0.8), 0.4),
             };
-            
+
             let entity = commands
                 .spawn((
                     SimSynced,
                     CarLink(*id),
                     Mesh3d(meshes.add(Cuboid::new(width, height, length))),
                     MeshMaterial3d(materials.add(color)),
-                    Transform::from_translation(Vec3::new(car.position.x, y_height, car.position.z))
-                        .with_rotation(Quat::from_rotation_y(car.angle)),
+                    Transform::from_translation(Vec3::new(
+                        car.position.x,
+                        y_height,
+                        car.position.z,
+                    ))
+                    .with_rotation(Quat::from_rotation_y(car.angle)),
                 ))
                 .id();
             mappings.cars.insert(*id, entity);
