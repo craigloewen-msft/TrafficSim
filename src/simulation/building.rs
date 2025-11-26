@@ -4,7 +4,7 @@
 
 use super::types::{CarId, FactoryId, HouseId, IntersectionId, ShopId};
 
-/// Duration in seconds that a factory processes a car (worker) before sending them back
+/// Duration in seconds that a worker spends at the factory before returning home
 pub const FACTORY_WORK_TIME: f32 = 5.0;
 /// Threshold at which factories need workers
 pub const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
