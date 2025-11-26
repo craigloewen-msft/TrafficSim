@@ -270,8 +270,8 @@ impl SimRoadNetwork {
         self.intersection_to_node.len()
     }
 
-    /// Get all roads
-    #[allow(dead_code)]
+    /// Get all roads (used by UI for rendering)
+    #[cfg_attr(not(feature = "ui"), allow(dead_code))]
     pub fn get_all_roads(&self) -> impl Iterator<Item = (&RoadId, &SimRoad)> {
         self.roads.iter()
     }
