@@ -39,6 +39,11 @@ impl SimIntersection {
         }
     }
 
+    /// Check if a car currently holds the lock on this intersection
+    pub fn is_held_by(&self, car_id: CarId) -> bool {
+        self.occupied_by == Some(car_id)
+    }
+
     /// Check if a car can proceed through the intersection
     /// This handles both acquiring the lock and checking wait time
     /// Returns true if the car can proceed, false if it must wait

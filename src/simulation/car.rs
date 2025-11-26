@@ -105,15 +105,22 @@ impl SimCar {
         // Update distance along the road
         let mut distance_delta = self.speed * delta_secs;
 
+        // Track whether we're blocked by a car ahead
+        let mut blocked_by_car_ahead = false;
+
         if let Some((ahead_distance, _)) = ahead_car_option {
             let ahead_car_distance_diff = ahead_distance - self.distance_along_road;
             let safe_following_distance = CAR_LENGTH * SAFE_FOLLOWING_MULTIPLIER;
             if ahead_car_distance_diff <= OrderedFloat(distance_delta + safe_following_distance) {
                 distance_delta = 0.0;
+                blocked_by_car_ahead = true;
             }
         }
 
         // Check if we're approaching the end of the road
+        // Only try to acquire intersection lock if we're not blocked by a car ahead
+        // BUT if we already hold the lock, we still need to check if we can proceed
+        // This prevents acquiring new locks when blocked, while maintaining existing locks
         let distance_to_intersection = road_length - self.distance_along_road.into_inner();
 
         if distance_to_intersection <= INTERSECTION_APPROACH_DISTANCE {
@@ -121,8 +128,13 @@ impl SimCar {
                 .get_mut(&target_intersection_id)
                 .context("Failed to get intersection")?;
 
-            if !target_intersection.can_proceed(self.id) {
-                distance_delta = 0.0;
+            // Only check/acquire intersection if:
+            // 1. We're not blocked by a car ahead, OR
+            // 2. We already hold the lock on this intersection
+            if !blocked_by_car_ahead || target_intersection.is_held_by(self.id) {
+                if !target_intersection.can_proceed(self.id) {
+                    distance_delta = 0.0;
+                }
             }
         }
 
