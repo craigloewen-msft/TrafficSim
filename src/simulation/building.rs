@@ -1,5 +1,5 @@
 //! Building types for the traffic simulation
-//! 
+//!
 //! Houses, factories, and shops - standalone implementations.
 
 use super::types::{CarId, FactoryId, HouseId, IntersectionId, ShopId};
@@ -67,7 +67,8 @@ impl SimFactory {
     /// Receive a car (worker arrives) and start processing
     pub fn receive_car(&mut self, car_id: CarId, shop_target: IntersectionId) {
         self.labor_demand = (self.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
-        self.processing_cars.push((car_id, shop_target, FACTORY_PROCESSING_TIME));
+        self.processing_cars
+            .push((car_id, shop_target, FACTORY_PROCESSING_TIME));
     }
 
     /// Try to reserve a worker slot. Returns true if accepted.
@@ -88,15 +89,16 @@ impl SimFactory {
 
         // Update processing times
         let mut products_produced = 0;
-        self.processing_cars.retain_mut(|(_car_id, _shop_target, time_remaining)| {
-            *time_remaining -= delta_secs;
-            if *time_remaining <= 0.0 {
-                products_produced += 1;
-                false
-            } else {
-                true
-            }
-        });
+        self.processing_cars
+            .retain_mut(|(_car_id, _shop_target, time_remaining)| {
+                *time_remaining -= delta_secs;
+                if *time_remaining <= 0.0 {
+                    products_produced += 1;
+                    false
+                } else {
+                    true
+                }
+            });
 
         // Add produced goods to inventory
         if products_produced > 0 {

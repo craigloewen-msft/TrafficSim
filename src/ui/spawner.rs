@@ -2,12 +2,12 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::{IntersectionId, HouseId, FactoryId, ShopId, RoadId, SimRoad, Position};
-use crate::simulation::SimRoadNetwork;
 use super::components::{
-    DemandIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink, 
-    RoadLink, ShopLink, SimSynced, SimWorldResource,
+    DemandIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink, RoadLink, ShopLink,
+    SimSynced, SimWorldResource,
 };
+use crate::simulation::SimRoadNetwork;
+use crate::simulation::{FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimRoad};
 
 /// System to create initial visual entities from simulation state
 pub fn spawn_initial_visuals(
@@ -19,11 +19,41 @@ pub fn spawn_initial_visuals(
 ) {
     let world = &sim_world.0;
 
-    spawn_intersections(&mut commands, &mut meshes, &mut materials, world, &mut mappings);
-    spawn_roads(&mut commands, &mut meshes, &mut materials, world, &mut mappings);
-    spawn_houses(&mut commands, &mut meshes, &mut materials, world, &mut mappings);
-    spawn_factories(&mut commands, &mut meshes, &mut materials, world, &mut mappings);
-    spawn_shops(&mut commands, &mut meshes, &mut materials, world, &mut mappings);
+    spawn_intersections(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        world,
+        &mut mappings,
+    );
+    spawn_roads(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        world,
+        &mut mappings,
+    );
+    spawn_houses(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        world,
+        &mut mappings,
+    );
+    spawn_factories(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        world,
+        &mut mappings,
+    );
+    spawn_shops(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        world,
+        &mut mappings,
+    );
 }
 
 fn spawn_intersections(
@@ -34,7 +64,14 @@ fn spawn_intersections(
     mappings: &mut ResMut<EntityMappings>,
 ) {
     for (id, intersection) in &world.intersections {
-        spawn_intersection_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+        spawn_intersection_visual(
+            commands,
+            meshes,
+            materials,
+            *id,
+            &intersection.position,
+            mappings,
+        );
     }
 }
 
@@ -55,7 +92,11 @@ pub fn spawn_intersection_visual(
         .spawn((
             SimSynced,
             IntersectionLink(id),
-            Mesh3d(meshes.add(Cuboid::new(INTERSECTION_SIZE, INTERSECTION_HEIGHT, INTERSECTION_SIZE))),
+            Mesh3d(meshes.add(Cuboid::new(
+                INTERSECTION_SIZE,
+                INTERSECTION_HEIGHT,
+                INTERSECTION_SIZE,
+            ))),
             MeshMaterial3d(materials.add(intersection_color)),
             Transform::from_translation(Vec3::new(pos.x, INTERSECTION_HEIGHT / 2.0, pos.z)),
         ))
@@ -71,8 +112,10 @@ fn spawn_roads(
     mappings: &mut ResMut<EntityMappings>,
 ) {
     // Track which road pairs we've rendered (to avoid double-rendering two-way roads)
-    let mut rendered_road_pairs: std::collections::HashSet<(crate::simulation::IntersectionId, crate::simulation::IntersectionId)> = 
-        std::collections::HashSet::new();
+    let mut rendered_road_pairs: std::collections::HashSet<(
+        crate::simulation::IntersectionId,
+        crate::simulation::IntersectionId,
+    )> = std::collections::HashSet::new();
 
     for (id, road) in world.road_network.get_all_roads() {
         // For two-way roads, only render once per pair
@@ -89,7 +132,15 @@ fn spawn_roads(
             rendered_road_pairs.insert(pair_key);
         }
 
-        spawn_road_visual(commands, meshes, materials, &world.road_network, *id, road, mappings);
+        spawn_road_visual(
+            commands,
+            meshes,
+            materials,
+            &world.road_network,
+            *id,
+            road,
+            mappings,
+        );
     }
 }
 
@@ -119,7 +170,11 @@ pub fn spawn_road_visual(
         );
         let angle = start.angle_to(end);
         let rotation = Quat::from_rotation_y(angle);
-        let width = if road.is_two_way { TWO_WAY_ROAD_WIDTH } else { 0.4 };
+        let width = if road.is_two_way {
+            TWO_WAY_ROAD_WIDTH
+        } else {
+            0.4
+        };
 
         let entity = commands
             .spawn((
@@ -144,18 +199,9 @@ pub fn spawn_road_visual(
             entity,
             false,
         );
-        
+
         if road.is_two_way {
-            spawn_direction_arrows(
-                commands,
-                meshes,
-                materials,
-                end,
-                start,
-                0.15,
-                entity,
-                true,
-            );
+            spawn_direction_arrows(commands, meshes, materials, end, start, 0.15, entity, true);
         }
     }
 }
@@ -193,7 +239,11 @@ fn spawn_direction_arrows(
 
         commands.entity(parent_entity).with_children(|parent| {
             parent.spawn((
-                Mesh3d(meshes.add(Cuboid::new(ARROW_ARM_WIDTH, ARROW_ARM_HEIGHT, ARROW_ARM_LENGTH))),
+                Mesh3d(meshes.add(Cuboid::new(
+                    ARROW_ARM_WIDTH,
+                    ARROW_ARM_HEIGHT,
+                    ARROW_ARM_LENGTH,
+                ))),
                 MeshMaterial3d(materials.add(arrow_color)),
                 Transform::from_translation(Vec3::new(
                     offset_x - ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.sin(),
@@ -204,7 +254,11 @@ fn spawn_direction_arrows(
             ));
 
             parent.spawn((
-                Mesh3d(meshes.add(Cuboid::new(ARROW_ARM_WIDTH, ARROW_ARM_HEIGHT, ARROW_ARM_LENGTH))),
+                Mesh3d(meshes.add(Cuboid::new(
+                    ARROW_ARM_WIDTH,
+                    ARROW_ARM_HEIGHT,
+                    ARROW_ARM_LENGTH,
+                ))),
                 MeshMaterial3d(materials.add(arrow_color)),
                 Transform::from_translation(Vec3::new(
                     offset_x + ARROW_ARM_LENGTH * 0.5 * ARROW_ANGLE.sin(),
@@ -226,7 +280,14 @@ fn spawn_houses(
 ) {
     for (id, house) in &world.houses {
         if let Some(intersection) = world.intersections.get(&house.intersection_id) {
-            spawn_house_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+            spawn_house_visual(
+                commands,
+                meshes,
+                materials,
+                *id,
+                &intersection.position,
+                mappings,
+            );
         }
     }
 }
@@ -275,7 +336,14 @@ fn spawn_factories(
 ) {
     for (id, factory) in &world.factories {
         if let Some(intersection) = world.intersections.get(&factory.intersection_id) {
-            spawn_factory_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+            spawn_factory_visual(
+                commands,
+                meshes,
+                materials,
+                *id,
+                &intersection.position,
+                mappings,
+            );
         }
     }
 }
@@ -324,7 +392,14 @@ fn spawn_shops(
 ) {
     for (id, shop) in &world.shops {
         if let Some(intersection) = world.intersections.get(&shop.intersection_id) {
-            spawn_shop_visual(commands, meshes, materials, *id, &intersection.position, mappings);
+            spawn_shop_visual(
+                commands,
+                meshes,
+                materials,
+                *id,
+                &intersection.position,
+                mappings,
+            );
         }
     }
 }

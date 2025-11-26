@@ -131,3 +131,14 @@ pub struct GhostPreview;
 /// Marker for UI buttons
 #[derive(Component)]
 pub struct BuildModeButton(pub BuildingMode);
+
+/// Marker for global demand UI text elements
+#[derive(Component)]
+pub enum GlobalDemandText {
+    /// Factories waiting for workers
+    FactoriesWaiting,
+    /// Shops waiting for products
+    ShopsWaiting,
+    /// Houses waiting (with available cars but no demand)
+    HousesWaiting,
+}

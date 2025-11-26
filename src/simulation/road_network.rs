@@ -1,5 +1,5 @@
 //! Road network graph for pathfinding
-//! 
+//!
 //! Standalone implementation that doesn't depend on Bevy.
 
 use anyhow::{Context, Result};
@@ -70,9 +70,12 @@ impl SimRoadNetwork {
         }
 
         let node_index = self.graph.add_node(intersection_id);
-        self.intersection_to_node.insert(intersection_id, node_index);
-        self.node_to_intersection.insert(node_index, intersection_id);
-        self.intersection_positions.insert(intersection_id, position);
+        self.intersection_to_node
+            .insert(intersection_id, node_index);
+        self.node_to_intersection
+            .insert(node_index, intersection_id);
+        self.intersection_positions
+            .insert(intersection_id, position);
         self.path_cache.clear();
     }
 
@@ -289,10 +292,7 @@ impl SimRoadNetwork {
     /// Remove a road from the network
     /// Returns the cars that were on the road
     pub fn remove_road(&mut self, road_id: RoadId) -> Result<Vec<CarId>> {
-        let road = self
-            .roads
-            .remove(&road_id)
-            .context("Road not found")?;
+        let road = self.roads.remove(&road_id).context("Road not found")?;
 
         let start_node = self
             .intersection_to_node
@@ -410,7 +410,9 @@ impl SimRoadNetwork {
             .min_by(|(_, pos_a), (_, pos_b)| {
                 let dist_a = position.distance(pos_a);
                 let dist_b = position.distance(pos_b);
-                dist_a.partial_cmp(&dist_b).unwrap_or(std::cmp::Ordering::Equal)
+                dist_a
+                    .partial_cmp(&dist_b)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|(id, _)| *id)
     }
@@ -452,7 +454,13 @@ impl SimRoadNetwork {
             let distance_along_road = t * road.length;
 
             if closest.is_none() || distance < closest.as_ref().unwrap().4 {
-                closest = Some((*road_id, closest_point, distance_along_road, road.length, distance));
+                closest = Some((
+                    *road_id,
+                    closest_point,
+                    distance_along_road,
+                    road.length,
+                    distance,
+                ));
             }
         }
 

@@ -1,13 +1,13 @@
 //! Main simulation world that ties everything together
-//! 
+//!
 //! This is the entry point for running the traffic simulation
 //! without any Bevy dependencies.
 
 use anyhow::{Context, Result};
 use ordered_float::OrderedFloat;
 use rand::rngs::StdRng;
-use rand::Rng;
 use rand::seq::IndexedRandom;
+use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
 
@@ -20,6 +20,26 @@ use super::road_network::SimRoadNetwork;
 use super::types::{
     CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
 };
+
+/// Global demand metrics for the simulation
+///
+/// Tracks how many buildings have unmet demand - i.e., they need resources
+/// but there isn't enough supply to meet their needs.
+#[derive(Debug, Clone, Default)]
+pub struct GlobalDemand {
+    /// Number of factories waiting for workers but no houses have available cars
+    pub factories_waiting: usize,
+    /// Total number of factories
+    pub total_factories: usize,
+    /// Number of shops waiting for products but no factories have inventory
+    pub shops_waiting: usize,
+    /// Total number of shops
+    pub total_shops: usize,
+    /// Number of houses with available cars but no factories need workers
+    pub houses_waiting: usize,
+    /// Total number of houses
+    pub total_houses: usize,
+}
 
 /// The main simulation world
 pub struct SimWorld {
@@ -272,11 +292,17 @@ impl SimWorld {
         intersection_b: IntersectionId,
     ) -> Result<()> {
         // Find and remove both directions of the road
-        if let Ok(forward_road) = self.road_network.find_road_between(intersection_a, intersection_b) {
+        if let Ok(forward_road) = self
+            .road_network
+            .find_road_between(intersection_a, intersection_b)
+        {
             self.remove_road(forward_road)?;
         }
 
-        if let Ok(backward_road) = self.road_network.find_road_between(intersection_b, intersection_a) {
+        if let Ok(backward_road) = self
+            .road_network
+            .find_road_between(intersection_b, intersection_a)
+        {
             self.remove_road(backward_road)?;
         }
 
@@ -366,7 +392,10 @@ impl SimWorld {
         // If two-way, also create reverse roads
         if is_two_way {
             // Remove the reverse road if it exists
-            if let Ok(reverse_road) = self.road_network.find_road_between(end_intersection, start_intersection) {
+            if let Ok(reverse_road) = self
+                .road_network
+                .find_road_between(end_intersection, start_intersection)
+            {
                 self.road_network.remove_road(reverse_road)?;
             }
 
@@ -393,12 +422,16 @@ impl SimWorld {
     ) -> Result<(IntersectionId, IntersectionId, RoadId, RoadId)> {
         // Find or create start intersection
         let start_intersection = self.find_or_create_intersection(start_pos, snap_distance)?;
-        
+
         // Find or create end intersection
         let end_intersection = self.find_or_create_intersection(end_pos, snap_distance)?;
 
         // Check if these intersections are already connected
-        if self.road_network.find_road_between(start_intersection, end_intersection).is_ok() {
+        if self
+            .road_network
+            .find_road_between(start_intersection, end_intersection)
+            .is_ok()
+        {
             anyhow::bail!("Road already exists between these intersections");
         }
 
@@ -417,7 +450,10 @@ impl SimWorld {
     ) -> Result<IntersectionId> {
         // First, check if there's an existing intersection nearby
         if let Some(closest_intersection) = self.road_network.find_closest_intersection(&position) {
-            if let Some(intersection_pos) = self.road_network.get_intersection_position(closest_intersection) {
+            if let Some(intersection_pos) = self
+                .road_network
+                .get_intersection_position(closest_intersection)
+            {
                 if position.distance(intersection_pos) <= snap_distance {
                     return Ok(closest_intersection);
                 }
@@ -425,10 +461,13 @@ impl SimWorld {
         }
 
         // Check if position is close to an existing road (for splitting)
-        if let Some((road_id, closest_point, _, _)) = self.road_network.find_closest_point_on_road(&position) {
+        if let Some((road_id, closest_point, _, _)) =
+            self.road_network.find_closest_point_on_road(&position)
+        {
             if position.distance(&closest_point) <= snap_distance {
                 // Split the road at this position
-                let (new_intersection, _, _) = self.split_road_at_position(road_id, closest_point)?;
+                let (new_intersection, _, _) =
+                    self.split_road_at_position(road_id, closest_point)?;
                 return Ok(new_intersection);
             }
         }
@@ -522,7 +561,8 @@ impl SimWorld {
         for car_id in car_ids {
             // Get car mutably, update it, then process result
             if let Some(mut car) = self.cars.remove(&car_id) {
-                let result = car.update(delta_secs, &mut self.road_network, &mut self.intersections);
+                let result =
+                    car.update(delta_secs, &mut self.road_network, &mut self.intersections);
 
                 match result {
                     Ok(CarUpdateResult::Continue) => {
@@ -613,10 +653,11 @@ impl SimWorld {
             }
 
             // Choose random factory
-            let (factory_id, factory_intersection) = match self.choose_random(&factories_with_demand) {
-                Some(&(fid, fi)) => (fid, fi),
-                None => continue,
-            };
+            let (factory_id, factory_intersection) =
+                match self.choose_random(&factories_with_demand) {
+                    Some(&(fid, fi)) => (fid, fi),
+                    None => continue,
+                };
 
             // Try to reserve at factory
             if let Some(factory) = self.factories.get_mut(&factory_id) {
@@ -634,7 +675,11 @@ impl SimWorld {
             };
 
             // Spawn car
-            match self.spawn_car(house_intersection, factory_intersection, Some(house_intersection)) {
+            match self.spawn_car(
+                house_intersection,
+                factory_intersection,
+                Some(house_intersection),
+            ) {
                 Ok(car_id) => {
                     if let Some(house) = self.houses.get_mut(&house_id) {
                         house.car = Some(car_id);
@@ -697,10 +742,7 @@ impl SimWorld {
                     }
 
                     // Check if arrived at shop
-                    if let Some(shop) = self
-                        .shops
-                        .values_mut()
-                        .find(|s| s.intersection_id == dest)
+                    if let Some(shop) = self.shops.values_mut().find(|s| s.intersection_id == dest)
                     {
                         shop.receive_delivery();
                     }
@@ -740,7 +782,7 @@ impl SimWorld {
         // Create a 3x3 grid of intersections (main roads)
         let spacing = 20.0;
         let mut grid = [[IntersectionId(SimId(0)); 3]; 3];
-        
+
         for row in 0..3 {
             for col in 0..3 {
                 let x = (col as f32 - 1.0) * spacing;
@@ -765,10 +807,10 @@ impl SimWorld {
 
         // Add houses (4 total) - offshoots from grid corners
         let house_data = vec![
-            (grid[0][0], Position::new(-30.0, 0.0, -30.0)),  // Top-left
-            (grid[0][2], Position::new(30.0, 0.0, -30.0)),   // Top-right
-            (grid[2][0], Position::new(-30.0, 0.0, 30.0)),   // Bottom-left
-            (grid[2][2], Position::new(30.0, 0.0, 30.0)),    // Bottom-right
+            (grid[0][0], Position::new(-30.0, 0.0, -30.0)), // Top-left
+            (grid[0][2], Position::new(30.0, 0.0, -30.0)),  // Top-right
+            (grid[2][0], Position::new(-30.0, 0.0, 30.0)),  // Bottom-left
+            (grid[2][2], Position::new(30.0, 0.0, 30.0)),   // Bottom-right
         ];
 
         for (grid_intersection, house_pos) in house_data {
@@ -779,12 +821,12 @@ impl SimWorld {
 
         // Add factories (6 total) - offshoots from various grid points
         let factory_data = vec![
-            (grid[0][1], Position::new(0.0, 0.0, -35.0)),    // Top center
-            (grid[1][0], Position::new(-35.0, 0.0, 0.0)),    // Middle left
-            (grid[1][2], Position::new(35.0, 0.0, 0.0)),     // Middle right
-            (grid[2][1], Position::new(0.0, 0.0, 35.0)),     // Bottom center
-            (grid[1][1], Position::new(-12.0, 0.0, -12.0)),  // Center offset 1
-            (grid[1][1], Position::new(12.0, 0.0, 12.0)),    // Center offset 2
+            (grid[0][1], Position::new(0.0, 0.0, -35.0)), // Top center
+            (grid[1][0], Position::new(-35.0, 0.0, 0.0)), // Middle left
+            (grid[1][2], Position::new(35.0, 0.0, 0.0)),  // Middle right
+            (grid[2][1], Position::new(0.0, 0.0, 35.0)),  // Bottom center
+            (grid[1][1], Position::new(-12.0, 0.0, -12.0)), // Center offset 1
+            (grid[1][1], Position::new(12.0, 0.0, 12.0)), // Center offset 2
         ];
 
         for (grid_intersection, factory_pos) in factory_data {
@@ -795,8 +837,8 @@ impl SimWorld {
 
         // Add shops (2 total) - offshoots from grid
         let shop_data = vec![
-            (grid[0][0], Position::new(-30.0, 0.0, -25.0)),  // Near top-left
-            (grid[2][2], Position::new(30.0, 0.0, 25.0)),    // Near bottom-right
+            (grid[0][0], Position::new(-30.0, 0.0, -25.0)), // Near top-left
+            (grid[2][2], Position::new(30.0, 0.0, 25.0)),   // Near bottom-right
         ];
 
         for (grid_intersection, shop_pos) in shop_data {
@@ -859,6 +901,86 @@ impl SimWorld {
                 );
             }
         }
+
+        // Global demand status
+        let demand = self.calculate_global_demand();
+        println!("--- Global Demand ---");
+        println!(
+            "  Factories waiting: {}/{}",
+            demand.factories_waiting, demand.total_factories
+        );
+        println!(
+            "  Shops waiting: {}/{}",
+            demand.shops_waiting, demand.total_shops
+        );
+        println!(
+            "  Houses waiting: {}/{}",
+            demand.houses_waiting, demand.total_houses
+        );
+    }
+
+    /// Calculate global demand metrics
+    ///
+    /// Returns metrics showing how many buildings have unmet demand:
+    /// - Factories waiting: factories that need workers but no houses have available cars
+    /// - Shops waiting: shops that need products but no factories have inventory
+    /// - Houses waiting: houses with available cars but no factories need workers
+    pub fn calculate_global_demand(&self) -> GlobalDemand {
+        let total_factories = self.factories.len();
+        let total_shops = self.shops.len();
+        let total_houses = self.houses.len();
+
+        // Count factories that need workers (labor_demand >= threshold)
+        let factories_needing_workers: usize = self
+            .factories
+            .values()
+            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD)
+            .count();
+
+        // Count houses with available cars (car is None)
+        let houses_with_available_cars: usize =
+            self.houses.values().filter(|h| h.car.is_none()).count();
+
+        // Count shops that need products (product_demand >= threshold)
+        let shops_needing_products: usize = self
+            .shops
+            .values()
+            .filter(|s| s.product_demand >= PRODUCT_DEMAND_THRESHOLD)
+            .count();
+
+        // Count factories with inventory available
+        let factories_with_inventory: usize =
+            self.factories.values().filter(|f| f.inventory > 0).count();
+
+        // Factories waiting: need workers but no available supply (no houses with cars)
+        let factories_waiting = if houses_with_available_cars == 0 {
+            factories_needing_workers
+        } else {
+            0
+        };
+
+        // Shops waiting: need products but no supply (no factories with inventory)
+        let shops_waiting = if factories_with_inventory == 0 {
+            shops_needing_products
+        } else {
+            0
+        };
+
+        // Houses waiting: have cars but no demand (no factories need workers)
+        let houses_waiting = if factories_needing_workers == 0 {
+            houses_with_available_cars
+        } else {
+            0
+        };
+
+        GlobalDemand {
+            factories_waiting,
+            total_factories,
+            shops_waiting,
+            total_shops,
+            houses_waiting,
+            total_houses,
+        }
     }
 
     /// Draw a visual map of the world in the terminal
@@ -900,9 +1022,15 @@ impl SimWorld {
 
         // Draw roads
         for road in self.road_network.roads().values() {
-            let start_pos = self.road_network.get_intersection_position(road.start_intersection).unwrap();
-            let end_pos = self.road_network.get_intersection_position(road.end_intersection).unwrap();
-            
+            let start_pos = self
+                .road_network
+                .get_intersection_position(road.start_intersection)
+                .unwrap();
+            let end_pos = self
+                .road_network
+                .get_intersection_position(road.end_intersection)
+                .unwrap();
+
             let (start_row, start_col) = to_grid(start_pos.x, start_pos.z);
             let (end_row, end_col) = to_grid(end_pos.x, end_pos.z);
 
@@ -911,7 +1039,7 @@ impl SimWorld {
             let dy = (end_row as i32 - start_row as i32).abs();
             let sx = if start_col < end_col { 1 } else { -1 };
             let sy = if start_row < end_row { 1 } else { -1 };
-            
+
             let mut err = dx - dy;
             let mut x = start_col as i32;
             let mut y = start_row as i32;
@@ -944,7 +1072,7 @@ impl SimWorld {
         // Draw intersections
         for (id, pos) in self.road_network.intersection_positions() {
             let (row, col) = to_grid(pos.x, pos.z);
-            
+
             // Check what's at this intersection
             let has_house = self.houses.values().any(|h| h.intersection_id == *id);
             let has_factory = self.factories.values().any(|f| f.intersection_id == *id);
