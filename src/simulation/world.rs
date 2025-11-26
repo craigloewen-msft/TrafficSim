@@ -5,8 +5,10 @@
 
 use anyhow::{Context, Result};
 use ordered_float::OrderedFloat;
+use rand::rngs::StdRng;
 use rand::Rng;
 use rand::seq::IndexedRandom;
+use rand::SeedableRng;
 use std::collections::HashMap;
 
 use super::building::{
@@ -44,6 +46,9 @@ pub struct SimWorld {
 
     /// Simulation time
     pub time: f32,
+
+    /// Optional seeded RNG for reproducible simulations
+    rng: Option<StdRng>,
 }
 
 impl Default for SimWorld {
@@ -63,6 +68,41 @@ impl SimWorld {
             shops: HashMap::new(),
             next_id: 0,
             time: 0.0,
+            rng: None,
+        }
+    }
+
+    /// Create a new SimWorld with a seeded RNG for reproducible simulations
+    pub fn new_with_seed(seed: u64) -> Self {
+        Self {
+            road_network: SimRoadNetwork::new(),
+            intersections: HashMap::new(),
+            cars: HashMap::new(),
+            houses: HashMap::new(),
+            factories: HashMap::new(),
+            shops: HashMap::new(),
+            next_id: 0,
+            time: 0.0,
+            rng: Some(StdRng::seed_from_u64(seed)),
+        }
+    }
+
+    /// Get a random value in the given range, using seeded RNG if available
+    fn random_range(&mut self, range: std::ops::Range<f32>) -> f32 {
+        match &mut self.rng {
+            Some(rng) => rng.random_range(range),
+            None => rand::rng().random_range(range),
+        }
+    }
+
+    /// Choose a random element from a slice, using seeded RNG if available
+    fn choose_random<'a, T>(&mut self, slice: &'a [T]) -> Option<&'a T> {
+        if slice.is_empty() {
+            return None;
+        }
+        match &mut self.rng {
+            Some(rng) => slice.choose(rng),
+            None => slice.choose(&mut rand::rng()),
         }
     }
 
@@ -444,8 +484,7 @@ impl SimWorld {
             .context("Start intersection position not found")?;
 
         // Generate random speed
-        let mut rng = rand::rng();
-        let speed = rng.random_range(2.0..6.0);
+        let speed = self.random_range(2.0..6.0);
 
         let id = CarId(self.next_sim_id());
         let car = SimCar::new(
@@ -559,8 +598,6 @@ impl SimWorld {
             return;
         }
 
-        let mut rng = rand::rng();
-
         // Collect house IDs to process
         let house_ids: Vec<HouseId> = self.houses.keys().copied().collect();
 
@@ -576,7 +613,7 @@ impl SimWorld {
             }
 
             // Choose random factory
-            let (factory_id, factory_intersection) = match factories_with_demand.choose(&mut rng) {
+            let (factory_id, factory_intersection) = match self.choose_random(&factories_with_demand) {
                 Some(&(fid, fi)) => (fid, fi),
                 None => continue,
             };
@@ -651,8 +688,8 @@ impl SimWorld {
                         let shop_intersections: Vec<IntersectionId> =
                             self.shops.values().map(|s| s.intersection_id).collect();
 
-                        if let Some(&shop_intersection) = shop_intersections.choose(&mut rand::rng())
-                        {
+                        let shop_intersection = self.choose_random(&shop_intersections).copied();
+                        if let Some(shop_intersection) = shop_intersection {
                             if let Some(factory) = self.factories.get_mut(&fid) {
                                 factory.receive_car(car_id, shop_intersection);
                             }
@@ -690,8 +727,16 @@ impl SimWorld {
 
     /// Create a default test world with some roads and buildings
     pub fn create_test_world() -> Self {
-        let mut world = SimWorld::new();
+        Self::build_test_world(SimWorld::new())
+    }
 
+    /// Create a default test world with a seeded RNG for reproducible simulations
+    pub fn create_test_world_with_seed(seed: u64) -> Self {
+        Self::build_test_world(SimWorld::new_with_seed(seed))
+    }
+
+    /// Internal helper to build the test world structure
+    fn build_test_world(mut world: SimWorld) -> Self {
         // Create a 3x3 grid of intersections (main roads)
         let spacing = 20.0;
         let mut grid = [[IntersectionId(SimId(0)); 3]; 3];
