@@ -108,11 +108,11 @@ pub fn handle_build_buttons(
         };
         
         if building_state.mode == button.0 {
-            // Brighten when selected
+            // Brighten when selected (clamp to prevent overflow)
             bg_color.0 = Color::srgba(
-                base_color.to_srgba().red * 1.3,
-                base_color.to_srgba().green * 1.3,
-                base_color.to_srgba().blue * 1.3,
+                (base_color.to_srgba().red * 1.3).min(1.0),
+                (base_color.to_srgba().green * 1.3).min(1.0),
+                (base_color.to_srgba().blue * 1.3).min(1.0),
                 1.0,
             );
         } else {
@@ -457,53 +457,53 @@ pub fn handle_placement_click(
                 }
             }
 
-            match building_state.mode {
-                BuildingMode::House => {
-                    let house_id = world.add_house(intersection_id);
-                    if let Some(intersection) = world.intersections.get(&intersection_id) {
-                        spawn_house_visual(
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            house_id,
-                            &intersection.position,
-                            &mut mappings,
-                        );
-                    }
-                    bevy::log::info!("Created house at {:?}", intersection_id);
-                }
-                BuildingMode::Factory => {
-                    let factory_id = world.add_factory(intersection_id);
-                    if let Some(intersection) = world.intersections.get(&intersection_id) {
-                        spawn_factory_visual(
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            factory_id,
-                            &intersection.position,
-                            &mut mappings,
-                        );
-                    }
-                    bevy::log::info!("Created factory at {:?}", intersection_id);
-                }
-                BuildingMode::Shop => {
-                    let shop_id = world.add_shop(intersection_id);
-                    if let Some(intersection) = world.intersections.get(&intersection_id) {
-                        spawn_shop_visual(
-                            &mut commands,
-                            &mut meshes,
-                            &mut materials,
-                            shop_id,
-                            &intersection.position,
-                            &mut mappings,
-                        );
-                    }
-                    bevy::log::info!("Created shop at {:?}", intersection_id);
-                }
-                _ => {}
-            }
+            // Spawn the building using the helper
+            spawn_building_at_intersection(
+                building_state.mode,
+                intersection_id,
+                world,
+                &mut commands,
+                &mut meshes,
+                &mut materials,
+                &mut mappings,
+            );
         }
         BuildingMode::None => {}
+    }
+}
+
+/// Helper to spawn a building at an intersection with its visual
+fn spawn_building_at_intersection(
+    building_mode: BuildingMode,
+    intersection_id: crate::simulation::IntersectionId,
+    world: &mut crate::simulation::SimWorld,
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<StandardMaterial>>,
+    mappings: &mut ResMut<EntityMappings>,
+) {
+    let position = match world.intersections.get(&intersection_id) {
+        Some(intersection) => intersection.position,
+        None => return,
+    };
+
+    match building_mode {
+        BuildingMode::House => {
+            let house_id = world.add_house(intersection_id);
+            spawn_house_visual(commands, meshes, materials, house_id, &position, mappings);
+            bevy::log::info!("Created house at {:?}", intersection_id);
+        }
+        BuildingMode::Factory => {
+            let factory_id = world.add_factory(intersection_id);
+            spawn_factory_visual(commands, meshes, materials, factory_id, &position, mappings);
+            bevy::log::info!("Created factory at {:?}", intersection_id);
+        }
+        BuildingMode::Shop => {
+            let shop_id = world.add_shop(intersection_id);
+            spawn_shop_visual(commands, meshes, materials, shop_id, &position, mappings);
+            bevy::log::info!("Created shop at {:?}", intersection_id);
+        }
+        _ => {}
     }
 }
 
@@ -537,7 +537,7 @@ fn find_or_create_building_intersection(
 /// Update button border colors to show current selection
 pub fn update_button_borders(
     building_state: Res<BuildingState>,
-    mut button_query: Query<(&BuildModeButton, &mut BorderColor), Without<Interaction>>,
+    mut button_query: Query<(&BuildModeButton, &mut BorderColor)>,
 ) {
     if !building_state.is_changed() {
         return;
