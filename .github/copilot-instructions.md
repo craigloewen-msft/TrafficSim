@@ -66,7 +66,7 @@ pub struct Intersection {
 ## Testing & Debugging
 - Use `bevy::log` macros for debugging: `debug!()`, `info!()`, `warn!()`, `error!()`
 - Log filter is configured in main.rs: `"warn,traffic_sim=debug"`
-- Run with `cargo run` for default build or `cargo run --release` for optimized
+- Run with `cargo run -- --test` to do a test
 
 ## When Adding New Features
 1. Consider if it needs a new Component, Resource, or System
