@@ -1,5 +1,5 @@
 //! UI module that visualizes the simulation state using Bevy
-//! 
+//!
 //! This module is purely for visualization - all simulation logic is in the `simulation` module.
 //! The UI reads state from `SimWorld` and renders it using Bevy's 3D graphics.
 
@@ -15,8 +15,8 @@ use bevy::prelude::*;
 pub use components::{EntityMappings, SimWorldResource};
 
 use building::{
-    handle_build_buttons, handle_build_keyboard, handle_placement_click,
-    setup_building_ui, update_button_borders, update_cursor_position, update_ghost_preview,
+    handle_build_buttons, handle_build_keyboard, handle_placement_click, setup_building_ui,
+    update_button_borders, update_cursor_position, update_ghost_preview,
 };
 use components::*;
 use input::{handle_camera_mouse, handle_camera_movement, handle_input};
@@ -33,7 +33,14 @@ impl Plugin for TrafficSimUIPlugin {
             .init_resource::<EntityMappings>()
             .init_resource::<CameraSettings>()
             .init_resource::<BuildingState>()
-            .add_systems(Startup, (setup_world, spawn_initial_visuals.after(setup_world), setup_building_ui))
+            .add_systems(
+                Startup,
+                (
+                    setup_world,
+                    spawn_initial_visuals.after(setup_world),
+                    setup_building_ui,
+                ),
+            )
             .add_systems(FixedUpdate, tick_simulation)
             .add_systems(
                 Update,

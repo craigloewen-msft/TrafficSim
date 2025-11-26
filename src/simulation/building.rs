@@ -1,5 +1,5 @@
 //! Building types for the traffic simulation
-//! 
+//!
 //! Houses, factories, and shops - standalone implementations.
 
 use super::types::{CarId, FactoryId, HouseId, IntersectionId, ShopId};

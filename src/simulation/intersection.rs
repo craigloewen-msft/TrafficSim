@@ -1,5 +1,5 @@
 //! Intersection logic for the traffic simulation
-//! 
+//!
 //! Standalone implementation that doesn't depend on Bevy.
 
 use super::types::{CarId, IntersectionId, Position};

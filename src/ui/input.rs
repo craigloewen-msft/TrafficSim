@@ -1,22 +1,19 @@
 //! Input handling systems
 
-use bevy::prelude::*;
 use bevy::input::mouse::MouseMotion;
+use bevy::prelude::*;
 
 use super::components::{CameraSettings, MainCamera};
 
 /// Handle basic keyboard input
-pub fn handle_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut exit: MessageWriter<AppExit>,
-) {
+pub fn handle_input(keyboard: Res<ButtonInput<KeyCode>>, mut exit: MessageWriter<AppExit>) {
     if keyboard.just_pressed(KeyCode::Escape) {
         exit.write(AppExit::Success);
     }
 }
 
 /// Handle camera orbital rotation with mouse drag
-/// 
+///
 /// Controls:
 /// - Click and drag: Orbit camera around the point where camera looks at the ground
 pub fn handle_camera_mouse(
@@ -51,7 +48,7 @@ pub fn handle_camera_mouse(
     // Cast a ray from camera to find intersection with ground plane
     let ray_origin = transform.translation;
     let ray_direction = transform.forward().as_vec3();
-    
+
     // Calculate intersection with ground plane (y = 0)
     // ray_origin.y + t * ray_direction.y = 0
     // t = -ray_origin.y / ray_direction.y
@@ -84,7 +81,7 @@ pub fn handle_camera_mouse(
         let to_pivot = transform.translation - pivot_point;
         let rotation = Quat::from_rotation_x(pitch);
         let rotated_offset = rotation * to_pivot;
-        
+
         // Check if new position is valid (not too low)
         let new_position = pivot_point + rotated_offset;
         if new_position.y > 5.0 {
@@ -95,7 +92,7 @@ pub fn handle_camera_mouse(
 }
 
 /// Handle camera movement with keyboard input
-/// 
+///
 /// Controls:
 /// - WASD: Move camera horizontally
 /// - Q/E: Rotate camera around the center
@@ -111,10 +108,10 @@ pub fn handle_camera_movement(
     };
 
     let delta = time.delta_secs();
-    
+
     // Calculate movement direction (in the camera's local space)
     let mut movement = Vec3::ZERO;
-    
+
     // Forward/backward (W/S) - move along Z axis
     if keyboard.pressed(KeyCode::KeyW) {
         movement.z += 1.0;
@@ -122,7 +119,7 @@ pub fn handle_camera_movement(
     if keyboard.pressed(KeyCode::KeyS) {
         movement.z -= 1.0;
     }
-    
+
     // Left/right (A/D) - move along X axis
     if keyboard.pressed(KeyCode::KeyA) {
         movement.x += 1.0;
@@ -130,13 +127,13 @@ pub fn handle_camera_movement(
     if keyboard.pressed(KeyCode::KeyD) {
         movement.x -= 1.0;
     }
-    
+
     // Apply movement
     if movement != Vec3::ZERO {
         movement = movement.normalize() * settings.movement_speed * delta;
         transform.translation += movement;
     }
-    
+
     // Zoom in/out (Z/X) - move camera up/down
     if keyboard.pressed(KeyCode::KeyZ) {
         transform.translation.y -= settings.zoom_speed * delta;
@@ -148,7 +145,7 @@ pub fn handle_camera_movement(
         // Clamp maximum height
         transform.translation.y = transform.translation.y.min(200.0);
     }
-    
+
     // Rotation around center (Q/E)
     if keyboard.pressed(KeyCode::KeyQ) {
         // Rotate counterclockwise around Y axis

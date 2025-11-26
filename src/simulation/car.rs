@@ -1,5 +1,5 @@
 //! Car movement logic for the traffic simulation
-//! 
+//!
 //! Standalone implementation that doesn't depend on Bevy.
 
 use anyhow::{Context, Result};
@@ -8,15 +8,15 @@ use ordered_float::OrderedFloat;
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, TripType, VehicleType,
-    CAR_LENGTH, INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
+    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, TripType, VehicleType, CAR_LENGTH,
+    INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
 };
 
 /// Result of a car update indicating what action should be taken
 #[derive(Debug, Clone)]
 pub enum CarUpdateResult {
-    Continue,                              // Car continues moving
-    Despawn,                               // Car should be despawned
+    Continue,                             // Car continues moving
+    Despawn,                              // Car should be despawned
     ArrivedAtDestination(IntersectionId), // Car arrived at destination
 }
 

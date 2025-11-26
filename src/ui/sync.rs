@@ -2,17 +2,13 @@
 
 use bevy::prelude::*;
 
-use crate::simulation::{CarId, VehicleType};
 use super::components::{
-    CarLink, DemandIndicator, EntityMappings, FactoryLink, ShopLink, 
-    SimSynced, SimWorldResource,
+    CarLink, DemandIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced, SimWorldResource,
 };
+use crate::simulation::{CarId, VehicleType};
 
 /// System to run simulation tick
-pub fn tick_simulation(
-    time: Res<Time>,
-    mut sim_world: ResMut<SimWorldResource>,
-) {
+pub fn tick_simulation(time: Res<Time>, mut sim_world: ResMut<SimWorldResource>) {
     sim_world.0.tick(time.delta_secs());
 }
 
@@ -31,7 +27,7 @@ pub fn sync_cars(
 
     // Update existing cars and track which ones still exist
     let mut existing_car_ids: std::collections::HashSet<CarId> = std::collections::HashSet::new();
-    
+
     for (entity, link, mut transform) in car_query.iter_mut() {
         if let Some(car) = world.cars.get(&link.0) {
             existing_car_ids.insert(link.0);
@@ -55,15 +51,19 @@ pub fn sync_cars(
                 VehicleType::Car => (0.3, 0.2, CAR_LENGTH, Color::srgb(0.8, 0.2, 0.2), 0.3),
                 VehicleType::Truck => (0.4, 0.35, TRUCK_LENGTH, Color::srgb(0.2, 0.4, 0.8), 0.4),
             };
-            
+
             let entity = commands
                 .spawn((
                     SimSynced,
                     CarLink(*id),
                     Mesh3d(meshes.add(Cuboid::new(width, height, length))),
                     MeshMaterial3d(materials.add(color)),
-                    Transform::from_translation(Vec3::new(car.position.x, y_height, car.position.z))
-                        .with_rotation(Quat::from_rotation_y(car.angle)),
+                    Transform::from_translation(Vec3::new(
+                        car.position.x,
+                        y_height,
+                        car.position.z,
+                    ))
+                    .with_rotation(Quat::from_rotation_y(car.angle)),
                 ))
                 .id();
             mappings.cars.insert(*id, entity);
@@ -79,13 +79,14 @@ pub fn update_factory_indicators(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
-    
+
     for (link, children) in factory_query.iter() {
         if let Some(factory) = sim_world.0.factories.get(&link.0) {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        let demand_ratio = (factory.labor_demand / (LABOR_DEMAND_THRESHOLD * 2.0)).min(1.0);
+                        let demand_ratio =
+                            (factory.labor_demand / (LABOR_DEMAND_THRESHOLD * 2.0)).min(1.0);
                         if demand_ratio < 0.5 {
                             let t = demand_ratio * 2.0;
                             material.base_color = Color::srgb(t, 1.0, 0.0);
@@ -108,13 +109,14 @@ pub fn update_shop_indicators(
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
     const PRODUCT_DEMAND_THRESHOLD: f32 = 10.0;
-    
+
     for (link, children) in shop_query.iter() {
         if let Some(shop) = sim_world.0.shops.get(&link.0) {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        let demand_ratio = (shop.product_demand / (PRODUCT_DEMAND_THRESHOLD * 2.0)).min(1.0);
+                        let demand_ratio =
+                            (shop.product_demand / (PRODUCT_DEMAND_THRESHOLD * 2.0)).min(1.0);
                         if demand_ratio < 0.5 {
                             let t = demand_ratio * 2.0;
                             material.base_color = Color::srgb(t, 1.0, 0.0);
