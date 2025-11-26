@@ -434,37 +434,71 @@ impl SimWorld {
     pub fn create_test_world() -> Self {
         let mut world = SimWorld::new();
 
-        // Create main intersections
-        let main_intersection = world.add_intersection(Position::new(10.0, 0.0, 10.0));
+        // Create a 3x3 grid of intersections (main roads)
+        let spacing = 20.0;
+        let mut grid = [[IntersectionId(SimId(0)); 3]; 3];
+        
+        for row in 0..3 {
+            for col in 0..3 {
+                let x = (col as f32 - 1.0) * spacing;
+                let z = (row as f32 - 1.0) * spacing;
+                grid[row][col] = world.add_intersection(Position::new(x, 0.0, z));
+            }
+        }
 
-        // Add houses connected to bottom intersection
-        let house_positions = vec![
-            Position::new(0.0, 0.0, 0.0),
+        // Connect grid horizontally
+        for row in 0..3 {
+            for col in 0..2 {
+                let _ = world.add_two_way_road(grid[row][col], grid[row][col + 1]);
+            }
+        }
+
+        // Connect grid vertically
+        for row in 0..2 {
+            for col in 0..3 {
+                let _ = world.add_two_way_road(grid[row][col], grid[row + 1][col]);
+            }
+        }
+
+        // Add houses (4 total) - offshoots from grid corners
+        let house_data = vec![
+            (grid[0][0], Position::new(-30.0, 0.0, -30.0)),  // Top-left
+            (grid[0][2], Position::new(30.0, 0.0, -30.0)),   // Top-right
+            (grid[2][0], Position::new(-30.0, 0.0, 30.0)),   // Bottom-left
+            (grid[2][2], Position::new(30.0, 0.0, 30.0)),    // Bottom-right
         ];
 
-        for pos in house_positions {
-            let house_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(house_intersection, main_intersection);
+        for (grid_intersection, house_pos) in house_data {
+            let house_intersection = world.add_intersection(house_pos);
+            let _ = world.add_two_way_road(grid_intersection, house_intersection);
             world.add_house(house_intersection);
         }
-        // Add factories connected to main intersection
-        let factory_positions = vec![
-            Position::new(-5.0, 0.0, 15.0),
+
+        // Add factories (6 total) - offshoots from various grid points
+        let factory_data = vec![
+            (grid[0][1], Position::new(0.0, 0.0, -35.0)),    // Top center
+            (grid[1][0], Position::new(-35.0, 0.0, 0.0)),    // Middle left
+            (grid[1][2], Position::new(35.0, 0.0, 0.0)),     // Middle right
+            (grid[2][1], Position::new(0.0, 0.0, 35.0)),     // Bottom center
+            (grid[1][1], Position::new(-12.0, 0.0, -12.0)),  // Center offset 1
+            (grid[1][1], Position::new(12.0, 0.0, 12.0)),    // Center offset 2
         ];
 
-        for pos in factory_positions {
-            let factory_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(factory_intersection, main_intersection);
+        for (grid_intersection, factory_pos) in factory_data {
+            let factory_intersection = world.add_intersection(factory_pos);
+            let _ = world.add_two_way_road(grid_intersection, factory_intersection);
             world.add_factory(factory_intersection);
         }
 
-        let shop_positions = vec![
-            Position::new(15.0, 0.0, 0.0),
+        // Add shops (2 total) - offshoots from grid
+        let shop_data = vec![
+            (grid[0][0], Position::new(-30.0, 0.0, -25.0)),  // Near top-left
+            (grid[2][2], Position::new(30.0, 0.0, 25.0)),    // Near bottom-right
         ];
 
-        for pos in shop_positions {
-            let shop_intersection = world.add_intersection(pos);
-            let _ = world.add_two_way_road(shop_intersection, main_intersection);
+        for (grid_intersection, shop_pos) in shop_data {
+            let shop_intersection = world.add_intersection(shop_pos);
+            let _ = world.add_two_way_road(grid_intersection, shop_intersection);
             world.add_shop(shop_intersection);
         }
 
@@ -546,7 +580,7 @@ impl SimWorld {
         max_z += 2.0;
 
         // Define grid size (characters per unit)
-        let scale = 2.0; // 2 characters per world unit
+        let scale = 1.0; // 2 characters per world unit
         let width = ((max_x - min_x) * scale) as usize;
         let height = ((max_z - min_z) * scale) as usize;
 
