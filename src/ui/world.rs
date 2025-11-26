@@ -1,8 +1,8 @@
+//! World setup systems for camera, lighting, and ground
+
 use bevy::prelude::*;
 
-/// Component to mark the ground plane
-#[derive(Component)]
-pub struct Ground;
+use super::components::Ground;
 
 /// System to setup the world environment (ground, lighting, camera)
 pub fn setup_world(
@@ -32,13 +32,4 @@ pub fn setup_world(
         Mesh3d(meshes.add(Plane3d::default().mesh().size(200.0, 200.0))),
         MeshMaterial3d(materials.add(Color::srgb(0.3, 0.5, 0.3))),
     ));
-}
-
-/// Plugin to register all world-related systems
-pub struct WorldPlugin;
-
-impl Plugin for WorldPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_world);
-    }
 }

@@ -1,26 +1,94 @@
-mod car;
-mod factory;
-mod house;
-mod interface;
-mod intersection;
-mod road;
-mod road_network;
-mod shop;
-mod two_way_road;
-mod world;
+mod simulation;
 
-use bevy::prelude::*;
-use bevy::log::LogPlugin;
-use car::CarPlugin;
-use factory::FactoryPlugin;
-use house::HousePlugin;
-use interface::InterfacePlugin;
-use intersection::IntersectionPlugin;
-use road::RoadPlugin;
-use shop::ShopPlugin;
-use world::WorldPlugin;
+#[cfg(feature = "ui")]
+mod ui;
+
+use clap::Parser;
+
+#[derive(Parser)]
+#[command(name = "traffic_sim")]
+#[command(about = "Traffic simulation with optional UI")]
+struct Cli {
+    /// Run with the Bevy game engine UI
+    #[arg(long)]
+    ui: bool,
+
+    /// Number of simulation ticks to run in headless mode
+    #[arg(long, default_value = "1000")]
+    ticks: u32,
+
+    /// Time delta per tick in seconds
+    #[arg(long, default_value = "0.1")]
+    delta: f32,
+}
 
 fn main() {
+    let cli = Cli::parse();
+
+    if cli.ui {
+        #[cfg(feature = "ui")]
+        {
+            run_with_ui();
+        }
+        #[cfg(not(feature = "ui"))]
+        {
+            eprintln!("Error: UI feature is not enabled. Rebuild with --features ui");
+            std::process::exit(1);
+        }
+    } else {
+        run_headless(cli.ticks, cli.delta);
+    }
+}
+
+/// Run the simulation in headless mode (no graphics)
+fn run_headless(ticks: u32, delta: f32) {
+    println!("Running traffic simulation in headless mode...");
+    println!("Ticks: {}, Delta: {}s", ticks, delta);
+    
+    // Calculate how many ticks equal 1 second of simulation time
+    let ticks_per_second = (1.0 / delta).ceil() as u32;
+    println!("Running {} ticks per second (simulated time)", ticks_per_second);
+    println!();
+
+    let mut world = simulation::SimWorld::create_test_world();
+
+    println!("Initial state:");
+    world.print_summary();
+    world.draw_map();
+    println!();
+
+    // Run simulation
+    let mut tick = 0;
+    while tick < ticks {
+        // Run ticks_per_second ticks (or remaining ticks if fewer)
+        let ticks_to_run = ticks_per_second.min(ticks - tick);
+        
+        for _ in 0..ticks_to_run {
+            tick += 1;
+            world.tick(delta);
+        }
+
+        // Print summary after running 1 second worth of ticks
+        println!("--- After tick {} ({:.1}s simulated time) ---", tick, tick as f32 * delta);
+        world.print_summary();
+        world.draw_map();
+        println!();
+        
+        if tick < ticks {
+            std::thread::sleep(std::time::Duration::from_millis(500));
+        }
+    }
+
+    println!("=== Final State ===");
+    world.print_summary();
+    world.draw_map();
+}
+
+#[cfg(feature = "ui")]
+fn run_with_ui() {
+    use bevy::prelude::*;
+    use bevy::log::LogPlugin;
+
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -38,18 +106,6 @@ fn main() {
                     ..default()
                 }),
         )
-        // Add our custom plugins for each game concept
-        .add_plugins((WorldPlugin, RoadPlugin, IntersectionPlugin, CarPlugin, HousePlugin, FactoryPlugin, ShopPlugin, InterfacePlugin))
-        .add_systems(Update, handle_input)
+        .add_plugins(ui::TrafficSimUIPlugin)
         .run();
-}
-
-/// Handle basic keyboard input
-fn handle_input(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut exit: MessageWriter<AppExit>,
-) {
-    if keyboard.just_pressed(KeyCode::Escape) {
-        exit.write(AppExit::Success);
-    }
 }

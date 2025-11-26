@@ -1,0 +1,29 @@
+//! Standalone traffic simulation module
+//! 
+//! This module contains all the core traffic simulation logic that can run
+//! independently of the Bevy game engine. It can be tested via console
+//! without needing to boot up the full game.
+
+mod types;
+mod road_network;
+mod intersection;
+mod car;
+mod building;
+mod world;
+
+// Re-export public types for external use
+// These may not be used within this crate but are part of the public API
+#[allow(unused_imports)]
+pub use types::{
+    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
+    CAR_LENGTH, INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
+};
+#[allow(unused_imports)]
+pub use road_network::SimRoadNetwork;
+#[allow(unused_imports)]
+pub use intersection::SimIntersection;
+#[allow(unused_imports)]
+pub use car::{SimCar, CarUpdateResult};
+#[allow(unused_imports)]
+pub use building::{SimHouse, SimFactory, SimShop};
+pub use world::SimWorld;
