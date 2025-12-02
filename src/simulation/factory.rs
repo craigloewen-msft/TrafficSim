@@ -4,7 +4,7 @@
 //! and truck dispatch decisions.
 
 use super::building::SimFactory;
-use super::types::{FactoryId, HouseId, IntersectionId};
+use super::types::HouseId;
 
 /// Duration in seconds that a worker spends at the factory before returning home
 pub const FACTORY_WORK_TIME: f32 = 5.0;
@@ -12,14 +12,6 @@ pub const FACTORY_WORK_TIME: f32 = 5.0;
 pub const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
 /// Amount of demand reduced when a worker arrives
 pub const LABOR_DEMAND_PER_WORKER: f32 = 10.0;
-
-/// Result of factory update operations
-pub struct FactoryUpdateResult {
-    /// Workers who have completed their shift (factory_id, house_id)
-    pub workers_done: Vec<(FactoryId, HouseId)>,
-    /// Trucks ready to dispatch (factory_id, shop_intersection)
-    pub trucks_to_dispatch: Vec<(FactoryId, IntersectionId)>,
-}
 
 impl SimFactory {
     /// Check if the factory can accept workers
