@@ -688,11 +688,10 @@ impl SimWorld {
     /// Spawn workers from houses to factories
     fn spawn_workers(&mut self) {
         // Get factories with high labor demand that can accept workers
-        // (truck must be home and not full)
         let factories_with_demand: Vec<(FactoryId, IntersectionId)> = self
             .factories
             .values()
-            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD && f.truck.is_none() && f.deliveries_ready < f.max_deliveries)
+            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD && f.can_accept_workers())
             .map(|f| (f.id, f.intersection_id))
             .collect();
 

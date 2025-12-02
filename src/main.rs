@@ -393,8 +393,7 @@ mod tests {
             assert_eq!(factory.deliveries_ready, 2, "Factory should have 2 deliveries ready");
             
             // Try to reserve a worker - should fail because factory is full
-            let can_reserve = factory.deliveries_ready < factory.max_deliveries && factory.truck.is_none();
-            assert!(!can_reserve, "Factory should not accept workers when full (2/2 deliveries)");
+            assert!(!factory.can_accept_workers(), "Factory should not accept workers when full (2/2 deliveries)");
         }
         
         // Take a delivery (simulate truck dispatch)
@@ -408,8 +407,7 @@ mod tests {
         // Now factory should be able to accept workers again (has space for more deliveries)
         {
             let factory = world.factories.get(&factory_id).unwrap();
-            let can_reserve = factory.deliveries_ready < factory.max_deliveries && factory.truck.is_none();
-            assert!(can_reserve, "Factory should accept workers when not full (1/2 deliveries)");
+            assert!(factory.can_accept_workers(), "Factory should accept workers when not full (1/2 deliveries)");
         }
         
         // Simulate truck being out
@@ -422,9 +420,7 @@ mod tests {
         {
             let factory = world.factories.get(&factory_id).unwrap();
             assert!(factory.truck.is_some(), "Factory truck should be out");
-            
-            let can_reserve = factory.deliveries_ready < factory.max_deliveries && factory.truck.is_none();
-            assert!(!can_reserve, "Factory should not accept workers when truck is out");
+            assert!(!factory.can_accept_workers(), "Factory should not accept workers when truck is out");
         }
         
         println!("FACTORY DELIVERY LOGIC TEST PASSED");

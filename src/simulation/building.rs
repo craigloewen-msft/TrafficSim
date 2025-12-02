@@ -97,7 +97,7 @@ impl SimFactory {
     /// Workers can only be accepted when:
     /// 1. The truck is available (not out making deliveries)
     /// 2. The factory is not full (has room for more deliveries)
-    fn can_accept_workers(&self) -> bool {
+    pub fn can_accept_workers(&self) -> bool {
         self.truck.is_none() && self.deliveries_ready < self.max_deliveries
     }
 
