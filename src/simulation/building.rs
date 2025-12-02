@@ -127,6 +127,7 @@ impl SimFactory {
     }
 
     /// Try to take one delivery for truck dispatch
+    /// Note: This check also verifies truck is home for safety, though callers should ensure this
     pub fn take_delivery(&mut self) -> bool {
         if self.deliveries_ready > 0 && self.truck.is_none() {
             self.deliveries_ready -= 1;

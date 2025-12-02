@@ -166,22 +166,20 @@ pub fn update_factory_delivery_indicators(
 ) {
     for (link, children) in factory_query.iter() {
         if let Some(factory) = sim_world.0.factories.get(&link.0) {
-            // Get all delivery indicator children (should be 2)
-            let mut delivery_indicators: Vec<_> = children
-                .iter()
-                .filter_map(|child| indicator_query.get_mut(*child).ok())
-                .collect();
-
-            // Update the color of each indicator based on delivery count
-            for (i, material_handle) in delivery_indicators.iter_mut().enumerate() {
-                if let Some(material) = materials.get_mut(&material_handle.0) {
-                    // Light up indicators based on deliveries_ready count
-                    if i < factory.deliveries_ready as usize {
-                        // Yellow/gold color for ready deliveries
-                        material.base_color = Color::srgb(1.0, 0.8, 0.0);
-                    } else {
-                        // Dark gray for empty slots
-                        material.base_color = Color::srgb(0.3, 0.3, 0.3);
+            // Iterate over delivery indicator children directly (should be 2)
+            let mut indicator_index = 0;
+            for child in children.iter() {
+                if let Ok(mut material_handle) = indicator_query.get_mut(*child) {
+                    if let Some(material) = materials.get_mut(&material_handle.0) {
+                        // Light up indicators based on deliveries_ready count
+                        if indicator_index < factory.deliveries_ready as usize {
+                            // Yellow/gold color for ready deliveries
+                            material.base_color = Color::srgb(1.0, 0.8, 0.0);
+                        } else {
+                            // Dark gray for empty slots
+                            material.base_color = Color::srgb(0.3, 0.3, 0.3);
+                        }
+                        indicator_index += 1;
                     }
                 }
             }
