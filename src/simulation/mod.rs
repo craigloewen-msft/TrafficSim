@@ -6,6 +6,7 @@
 
 mod building;
 mod car;
+mod factory;
 mod intersection;
 mod road_network;
 mod types;
@@ -17,6 +18,8 @@ mod world;
 pub use building::{SimFactory, SimHouse, SimShop};
 #[allow(unused_imports)]
 pub use car::{CarUpdateResult, SimCar};
+#[allow(unused_imports)]
+pub use factory::{FACTORY_WORK_TIME, LABOR_DEMAND_PER_WORKER, LABOR_DEMAND_THRESHOLD};
 #[allow(unused_imports)]
 pub use intersection::SimIntersection;
 #[allow(unused_imports)]
