@@ -316,7 +316,14 @@ fn run_simulation_test(
 mod tests {
     use super::*;
 
-    /// Test basic simulation functionality with reasonable delivery expectations
+    /// Minimum number of deliveries expected in a 1000-tick simulation
+    const MIN_EXPECTED_DELIVERIES: usize = 3;
+
+    /// Tests that the simulation produces deliveries within expected thresholds.
+    ///
+    /// This test validates basic simulation functionality by running 1000 ticks
+    /// and ensuring that cars spawn, the road network remains intact, and
+    /// a reasonable number of deliveries are completed.
     #[test]
     fn test_simulation_basic() {
         let ticks = 1000;
@@ -333,17 +340,18 @@ mod tests {
         );
 
         // Assert reasonable number of deliveries for 1000 ticks
-        // We expect at least 3 deliveries to ensure the simulation is functioning
+        // We expect at least MIN_EXPECTED_DELIVERIES to ensure the simulation is functioning
         // Note: Some non-determinism exists even with seeding due to HashMap iteration order
         assert!(
-            total_deliveries >= 3,
-            "Expected at least 3 deliveries in 1000 ticks, got {}. The simulation may not be functioning properly.",
+            total_deliveries >= MIN_EXPECTED_DELIVERIES,
+            "Expected at least {} deliveries in 1000 ticks, got {}. The simulation may not be functioning properly.",
+            MIN_EXPECTED_DELIVERIES,
             total_deliveries
         );
 
         println!(
-            "\nDELIVERY TEST PASSED: {} deliveries completed (>= 3 expected)",
-            total_deliveries
+            "\nDELIVERY TEST PASSED: {} deliveries completed (>= {} expected)",
+            total_deliveries, MIN_EXPECTED_DELIVERIES
         );
     }
 }
