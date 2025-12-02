@@ -164,20 +164,21 @@ pub fn update_factory_delivery_indicators(
     mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DeliveryIndicator>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
+    const DELIVERY_INDICATOR_ACTIVE_COLOR: Color = Color::srgb(1.0, 0.8, 0.0); // Gold/yellow
+    const DELIVERY_INDICATOR_EMPTY_COLOR: Color = Color::srgb(0.3, 0.3, 0.3); // Dark gray
+    
     for (link, children) in factory_query.iter() {
         if let Some(factory) = sim_world.0.factories.get(&link.0) {
-            // Iterate over delivery indicator children directly (should be 2)
+            // Iterate over delivery indicator children (query filters for DeliveryIndicator component)
             let mut indicator_index = 0;
             for child in children.iter() {
                 if let Ok(mut material_handle) = indicator_query.get_mut(*child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
                         // Light up indicators based on deliveries_ready count
                         if indicator_index < factory.deliveries_ready as usize {
-                            // Yellow/gold color for ready deliveries
-                            material.base_color = Color::srgb(1.0, 0.8, 0.0);
+                            material.base_color = DELIVERY_INDICATOR_ACTIVE_COLOR;
                         } else {
-                            // Dark gray for empty slots
-                            material.base_color = Color::srgb(0.3, 0.3, 0.3);
+                            material.base_color = DELIVERY_INDICATOR_EMPTY_COLOR;
                         }
                         indicator_index += 1;
                     }
