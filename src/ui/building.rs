@@ -4,14 +4,15 @@ use bevy::ecs::hierarchy::ChildSpawnerCommands;
 use bevy::prelude::*;
 
 use super::components::{
-    BuildModeButton, BuildingMode, BuildingState, EntityMappings, GhostPreview, GlobalDemandText,
-    MainCamera, SimWorldResource,
+    BuildModeButton, BuildingMode, BuildingState, EntityMappings, GhostPreview, MainCamera,
+    SimWorldResource,
 };
 use super::spawner::{
     spawn_factory_visual, spawn_house_visual, spawn_intersection_visual, spawn_road_visual,
     spawn_shop_visual,
 };
 use crate::simulation::Position;
+use crate::ui::components::GlobalDemandText;
 
 /// System to setup the building mode UI
 pub fn setup_building_ui(mut commands: Commands) {

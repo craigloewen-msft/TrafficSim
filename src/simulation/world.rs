@@ -18,7 +18,8 @@ use super::car::{CarUpdateResult, SimCar};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
+    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
+    VehicleType,
 };
 
 /// Global demand metrics for the simulation
@@ -311,13 +312,32 @@ impl SimWorld {
 
     /// Despawn a car and clean up references
     fn despawn_car(&mut self, car_id: CarId) {
+        // Get car info before removing
+        let car_info = self
+            .cars
+            .get(&car_id)
+            .map(|c| (c.origin_house, c.origin_factory));
+
         self.cars.remove(&car_id);
         self.road_network.remove_car_from_tracking(car_id);
 
-        // Clear house car reference
-        for house in self.houses.values_mut() {
-            if house.car == Some(car_id) {
-                house.car = None;
+        if let Some((origin_house, origin_factory)) = car_info {
+            // Clear house car reference
+            if let Some(house_id) = origin_house {
+                if let Some(house) = self.houses.get_mut(&house_id) {
+                    if house.car == Some(car_id) {
+                        house.car = None;
+                    }
+                }
+            }
+
+            // Clear factory truck reference
+            if let Some(factory_id) = origin_factory {
+                if let Some(factory) = self.factories.get_mut(&factory_id) {
+                    if factory.truck == Some(car_id) {
+                        factory.truck = None;
+                    }
+                }
             }
         }
     }
@@ -476,12 +496,15 @@ impl SimWorld {
         Ok(self.add_intersection(position))
     }
 
-    /// Spawn a car from a given intersection to a destination
-    pub fn spawn_car(
+    /// Spawn a vehicle from a given intersection to a destination
+    pub fn spawn_vehicle(
         &mut self,
         from_intersection: IntersectionId,
         to_intersection: IntersectionId,
-        origin_house: Option<IntersectionId>,
+        vehicle_type: VehicleType,
+        trip_type: TripType,
+        origin_house: Option<HouseId>,
+        origin_factory: Option<FactoryId>,
     ) -> Result<CarId> {
         // Find connected roads from the starting intersection
         let connected_roads = self
@@ -522,8 +545,11 @@ impl SimWorld {
             .get_intersection_position(from_intersection)
             .context("Start intersection position not found")?;
 
-        // Generate random speed
-        let speed = self.random_range(2.0..6.0);
+        // Generate random speed (trucks slightly slower)
+        let speed = match vehicle_type {
+            VehicleType::Car => self.random_range(2.0..6.0),
+            VehicleType::Truck => self.random_range(1.5..4.0),
+        };
 
         let id = CarId(self.next_sim_id());
         let car = SimCar::new(
@@ -532,9 +558,12 @@ impl SimWorld {
             road_id,
             from_intersection,
             path,
-            origin_house,
             start_pos,
             road_angle,
+            vehicle_type,
+            trip_type,
+            origin_house,
+            origin_factory,
         );
 
         // Register car on road
@@ -569,12 +598,18 @@ impl SimWorld {
                         self.cars.insert(car_id, car);
                     }
                     Ok(CarUpdateResult::Despawn) => {
+                        // Put car back temporarily so tick() can read its info
+                        self.cars.insert(car_id, car);
                         results.push((car_id, CarUpdateResult::Despawn));
                     }
                     Ok(CarUpdateResult::ArrivedAtDestination(dest)) => {
+                        // Put car back temporarily so tick() can read its info
+                        self.cars.insert(car_id, car);
                         results.push((car_id, CarUpdateResult::ArrivedAtDestination(dest)));
                     }
                     Err(_) => {
+                        // Put car back temporarily so tick() can read its info
+                        self.cars.insert(car_id, car);
                         results.push((car_id, CarUpdateResult::Despawn));
                     }
                 }
@@ -598,9 +633,14 @@ impl SimWorld {
         }
     }
 
-    /// Update all factories and get a list of products ready to ship
-    fn update_factories(&mut self, delta_secs: f32) -> Vec<(FactoryId, IntersectionId)> {
-        let mut products_ready = Vec::new();
+    /// Update all factories
+    /// Returns (workers_done_house_ids, trucks_to_dispatch)
+    fn update_factories(
+        &mut self,
+        delta_secs: f32,
+    ) -> (Vec<(FactoryId, HouseId)>, Vec<(FactoryId, IntersectionId)>) {
+        let mut workers_done = Vec::new();
+        let mut trucks_to_dispatch = Vec::new();
 
         // Get shops needing products
         let shops_needing_products: Vec<IntersectionId> = self
@@ -610,18 +650,39 @@ impl SimWorld {
             .map(|s| s.intersection_id)
             .collect();
 
-        for factory in self.factories.values_mut() {
-            factory.update(delta_secs);
+        // Collect factory IDs to avoid borrow issues
+        let factory_ids: Vec<FactoryId> = self.factories.keys().copied().collect();
 
-            // Try to send products to shops
-            for &shop_intersection in &shops_needing_products {
+        for factory_id in factory_ids {
+            let factory = match self.factories.get_mut(&factory_id) {
+                Some(f) => f,
+                None => continue,
+            };
+
+            // Update factory and get house_ids of workers who finished their shift
+            let finished_house_ids = factory.update(delta_secs);
+
+            // Record which houses have workers done
+            for house_id in finished_house_ids {
+                workers_done.push((factory_id, house_id));
+            }
+
+            // If truck is available and there's inventory and shops need products
+            if factory.truck_available()
+                && factory.inventory > 0
+                && !shops_needing_products.is_empty()
+            {
+                // Take a product for delivery
                 if factory.take_product() {
-                    products_ready.push((factory.id, shop_intersection));
+                    // Pick a random shop that needs products (use index based on factory id for determinism)
+                    let shop_index = factory_id.0 .0 % shops_needing_products.len();
+                    let shop_intersection = shops_needing_products[shop_index];
+                    trucks_to_dispatch.push((factory_id, shop_intersection));
                 }
             }
         }
 
-        products_ready
+        (workers_done, trucks_to_dispatch)
     }
 
     /// Spawn workers from houses to factories
@@ -674,11 +735,14 @@ impl SimWorld {
                 None => continue,
             };
 
-            // Spawn car
-            match self.spawn_car(
+            // Spawn car going to work
+            match self.spawn_vehicle(
                 house_intersection,
                 factory_intersection,
-                Some(house_intersection),
+                VehicleType::Car,
+                TripType::Outbound,
+                Some(house_id),
+                None,
             ) {
                 Ok(car_id) => {
                     if let Some(house) = self.houses.get_mut(&house_id) {
@@ -700,14 +764,61 @@ impl SimWorld {
         // Update shops
         self.update_shops(delta_secs);
 
-        // Update factories and get products to ship
-        let products_to_ship = self.update_factories(delta_secs);
+        // Update factories - get workers done and trucks to dispatch
+        let (workers_done, trucks_to_dispatch) = self.update_factories(delta_secs);
 
-        // Spawn delivery cars for products
-        for (factory_id, shop_intersection) in products_to_ship {
-            if let Some(factory) = self.factories.get(&factory_id) {
-                let factory_intersection = factory.intersection_id;
-                let _ = self.spawn_car(factory_intersection, shop_intersection, None);
+        // Send workers home after their shift
+        for (factory_id, house_id) in workers_done {
+            // Get the house intersection
+            let house_intersection = match self.houses.get(&house_id) {
+                Some(h) => h.intersection_id,
+                None => continue,
+            };
+
+            // Get the factory intersection
+            let factory_intersection = match self.factories.get(&factory_id) {
+                Some(f) => f.intersection_id,
+                None => continue,
+            };
+
+            // Spawn car returning home
+            let _ = self.spawn_vehicle(
+                factory_intersection,
+                house_intersection,
+                VehicleType::Car,
+                TripType::Return,
+                Some(house_id),
+                None,
+            );
+        }
+
+        // Dispatch trucks to make deliveries
+        for (factory_id, shop_intersection) in trucks_to_dispatch {
+            let factory_intersection = match self.factories.get(&factory_id) {
+                Some(f) => f.intersection_id,
+                None => continue,
+            };
+
+            // Spawn truck for delivery
+            match self.spawn_vehicle(
+                factory_intersection,
+                shop_intersection,
+                VehicleType::Truck,
+                TripType::Outbound,
+                None,
+                Some(factory_id),
+            ) {
+                Ok(truck_id) => {
+                    if let Some(factory) = self.factories.get_mut(&factory_id) {
+                        factory.truck = Some(truck_id);
+                    }
+                }
+                Err(_) => {
+                    // Failed to spawn truck, return product to inventory
+                    if let Some(factory) = self.factories.get_mut(&factory_id) {
+                        factory.inventory += 1;
+                    }
+                }
             }
         }
 
@@ -721,46 +832,116 @@ impl SimWorld {
         for (car_id, result) in car_results {
             match result {
                 CarUpdateResult::ArrivedAtDestination(dest) => {
-                    // Check if arrived at factory
-                    let factory_id = self
-                        .factories
-                        .values()
-                        .find(|f| f.intersection_id == dest)
-                        .map(|f| f.id);
+                    // Get car info before processing
+                    let car_info = self.cars.get(&car_id).map(|c| {
+                        (
+                            c.vehicle_type,
+                            c.trip_type,
+                            c.origin_house,
+                            c.origin_factory,
+                        )
+                    });
 
-                    if let Some(fid) = factory_id {
-                        // Pick a random shop as target
-                        let shop_intersections: Vec<IntersectionId> =
-                            self.shops.values().map(|s| s.intersection_id).collect();
-
-                        let shop_intersection = self.choose_random(&shop_intersections).copied();
-                        if let Some(shop_intersection) = shop_intersection {
-                            if let Some(factory) = self.factories.get_mut(&fid) {
-                                factory.receive_car(car_id, shop_intersection);
-                            }
-                        }
-                    }
-
-                    // Check if arrived at shop
-                    if let Some(shop) = self.shops.values_mut().find(|s| s.intersection_id == dest)
+                    if let Some((vehicle_type, trip_type, origin_house, origin_factory)) = car_info
                     {
-                        shop.receive_delivery();
-                    }
-
-                    // Clear house car reference
-                    for house in self.houses.values_mut() {
-                        if house.car == Some(car_id) {
-                            house.car = None;
+                        match (vehicle_type, trip_type) {
+                            (VehicleType::Car, TripType::Outbound) => {
+                                // Worker arrived at factory - register them with their house_id
+                                if let Some(house_id) = origin_house {
+                                    if let Some(factory) = self
+                                        .factories
+                                        .values_mut()
+                                        .find(|f| f.intersection_id == dest)
+                                    {
+                                        factory.receive_worker(house_id);
+                                    }
+                                }
+                                // Remove car from tracking while at work (will respawn when returning home)
+                                self.road_network.remove_car_from_tracking(car_id);
+                                self.cars.remove(&car_id);
+                            }
+                            (VehicleType::Car, TripType::Return) => {
+                                // Worker returned home - clear car reference and despawn
+                                if let Some(house_id) = origin_house {
+                                    if let Some(house) = self.houses.get_mut(&house_id) {
+                                        house.car = None;
+                                    }
+                                }
+                                self.road_network.remove_car_from_tracking(car_id);
+                                self.cars.remove(&car_id);
+                            }
+                            (VehicleType::Truck, TripType::Outbound) => {
+                                // Truck delivered to shop
+                                if let Some(shop) =
+                                    self.shops.values_mut().find(|s| s.intersection_id == dest)
+                                {
+                                    shop.receive_delivery();
+                                }
+                                // Now spawn truck returning to factory
+                                if let Some(factory_id) = origin_factory {
+                                    let factory_intersection =
+                                        self.factories.get(&factory_id).map(|f| f.intersection_id);
+                                    if let Some(factory_intersection) = factory_intersection {
+                                        // Spawn truck returning
+                                        match self.spawn_vehicle(
+                                            dest,
+                                            factory_intersection,
+                                            VehicleType::Truck,
+                                            TripType::Return,
+                                            None,
+                                            Some(factory_id),
+                                        ) {
+                                            Ok(new_truck_id) => {
+                                                if let Some(factory) =
+                                                    self.factories.get_mut(&factory_id)
+                                                {
+                                                    factory.truck = Some(new_truck_id);
+                                                }
+                                            }
+                                            Err(_) => {
+                                                // Truck can't return, just clear reference
+                                                if let Some(factory) =
+                                                    self.factories.get_mut(&factory_id)
+                                                {
+                                                    factory.truck = None;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                // Despawn old truck entity
+                                self.road_network.remove_car_from_tracking(car_id);
+                                self.cars.remove(&car_id);
+                            }
+                            (VehicleType::Truck, TripType::Return) => {
+                                // Truck returned to factory - clear reference and despawn
+                                if let Some(factory_id) = origin_factory {
+                                    if let Some(factory) = self.factories.get_mut(&factory_id) {
+                                        factory.truck = None;
+                                    }
+                                }
+                                self.road_network.remove_car_from_tracking(car_id);
+                                self.cars.remove(&car_id);
+                            }
                         }
                     }
                 }
                 CarUpdateResult::Despawn => {
-                    // Clear house car reference
-                    for house in self.houses.values_mut() {
-                        if house.car == Some(car_id) {
-                            house.car = None;
+                    // Clean up references for unexpectedly despawned vehicles
+                    if let Some(car) = self.cars.get(&car_id) {
+                        if let Some(house_id) = car.origin_house {
+                            if let Some(house) = self.houses.get_mut(&house_id) {
+                                house.car = None;
+                            }
+                        }
+                        if let Some(factory_id) = car.origin_factory {
+                            if let Some(factory) = self.factories.get_mut(&factory_id) {
+                                factory.truck = None;
+                            }
                         }
                     }
+                    self.road_network.remove_car_from_tracking(car_id);
+                    self.cars.remove(&car_id);
                 }
                 CarUpdateResult::Continue => {}
             }
@@ -869,12 +1050,17 @@ impl SimWorld {
         println!("--- Factories ---");
         for factory in self.factories.values() {
             println!(
-                "  Factory {:?}: demand={:.1}, inventory={}/{}, processing={}",
+                "  Factory {:?}: demand={:.1}, inventory={}/{}, workers={}, truck={}",
                 factory.id.0,
                 factory.labor_demand,
                 factory.inventory,
                 factory.max_inventory,
-                factory.processing_cars.len()
+                factory.workers.len(),
+                if factory.truck.is_some() {
+                    "out"
+                } else {
+                    "home"
+                }
             );
         }
 

@@ -95,6 +95,157 @@ fn run_headless(ticks: u32, delta: f32) {
     world.draw_map();
 }
 
+/// Run the simulation in test mode (deterministic, fast, with validation)
+/// Returns true if all validations pass, false otherwise
+fn run_test_simulation(ticks: u32, delta: f32, seed: u64) -> bool {
+    println!("Running traffic simulation in TEST mode...");
+    println!("Ticks: {}, Delta: {}s, Seed: {}", ticks, delta, seed);
+    println!();
+
+    let mut world = simulation::SimWorld::create_test_world_with_seed(seed);
+
+    // Track metrics for validation
+    let initial_houses = world.houses.len();
+    let initial_factories = world.factories.len();
+    let initial_shops = world.shops.len();
+    let initial_intersections = world.road_network.intersection_count();
+    let initial_roads = world.road_network.road_count();
+
+    let mut max_cars_observed = 0usize;
+    let mut total_deliveries = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    // Run simulation without delays
+    for tick in 1..=ticks {
+        world.tick(delta);
+
+        // Track maximum concurrent cars
+        max_cars_observed = max_cars_observed.max(world.cars.len());
+
+        // Validate simulation state periodically
+        if tick % 100 == 0 {
+            // Check for structural integrity
+            if world.road_network.intersection_count() != initial_intersections {
+                errors.push(format!(
+                    "Tick {}: Intersection count changed from {} to {}",
+                    tick,
+                    initial_intersections,
+                    world.road_network.intersection_count()
+                ));
+            }
+            if world.road_network.road_count() != initial_roads {
+                errors.push(format!(
+                    "Tick {}: Road count changed from {} to {}",
+                    tick,
+                    initial_roads,
+                    world.road_network.road_count()
+                ));
+            }
+            if world.houses.len() != initial_houses {
+                errors.push(format!(
+                    "Tick {}: House count changed from {} to {}",
+                    tick,
+                    initial_houses,
+                    world.houses.len()
+                ));
+            }
+            if world.factories.len() != initial_factories {
+                errors.push(format!(
+                    "Tick {}: Factory count changed from {} to {}",
+                    tick,
+                    initial_factories,
+                    world.factories.len()
+                ));
+            }
+            if world.shops.len() != initial_shops {
+                errors.push(format!(
+                    "Tick {}: Shop count changed from {} to {}",
+                    tick,
+                    initial_shops,
+                    world.shops.len()
+                ));
+            }
+        }
+    }
+
+    // Calculate total deliveries
+    for shop in world.shops.values() {
+        total_deliveries += shop.cars_received;
+    }
+
+    // Print test results
+    println!("=== TEST RESULTS ===");
+    println!("Simulation time: {:.2}s", world.time);
+    println!("Max concurrent cars: {}", max_cars_observed);
+    println!("Total deliveries to shops: {}", total_deliveries);
+    println!("Final car count: {}", world.cars.len());
+    println!();
+
+    // Validation checks
+    let mut validation_passed = true;
+
+    // Check: Cars should have spawned during simulation
+    if max_cars_observed == 0 {
+        errors.push("FAIL: No cars were ever spawned during simulation".to_string());
+        validation_passed = false;
+    } else {
+        println!(
+            "PASS: Cars spawned successfully (max: {})",
+            max_cars_observed
+        );
+    }
+
+    // Check: Road network should be intact
+    if world.road_network.intersection_count() == initial_intersections
+        && world.road_network.road_count() == initial_roads
+    {
+        println!("PASS: Road network integrity maintained");
+    } else {
+        errors.push("FAIL: Road network was unexpectedly modified".to_string());
+        validation_passed = false;
+    }
+
+    // Check: Buildings should be intact
+    if world.houses.len() == initial_houses
+        && world.factories.len() == initial_factories
+        && world.shops.len() == initial_shops
+    {
+        println!("PASS: Building integrity maintained");
+    } else {
+        errors.push("FAIL: Buildings were unexpectedly modified".to_string());
+        validation_passed = false;
+    }
+
+    // Check: For longer runs, we expect some deliveries
+    if ticks >= 100 && total_deliveries == 0 {
+        errors.push("FAIL: No deliveries completed (simulation may be stuck)".to_string());
+        validation_passed = false;
+    } else if ticks >= 100 {
+        println!(
+            "PASS: Deliveries completed successfully ({})",
+            total_deliveries
+        );
+    }
+
+    // Print any errors
+    if !errors.is_empty() {
+        println!();
+        println!("=== ERRORS ===");
+        for error in &errors {
+            println!("  {}", error);
+        }
+    }
+
+    println!();
+    if validation_passed && errors.is_empty() {
+        println!("TEST PASSED: All validations succeeded");
+        true
+    } else {
+        println!("TEST FAILED: {} error(s) detected", errors.len());
+        false
+    }
+}
+
 #[cfg(feature = "ui")]
 fn run_with_ui() {
     use bevy::log::LogPlugin;

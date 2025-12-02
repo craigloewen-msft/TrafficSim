@@ -3,10 +3,9 @@
 use bevy::prelude::*;
 
 use super::components::{
-    CarLink, DemandIndicator, EntityMappings, FactoryLink, GlobalDemandText, ShopLink, SimSynced,
-    SimWorldResource,
+    CarLink, DemandIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced, SimWorldResource,
 };
-use crate::simulation::CarId;
+use crate::{simulation::{CarId, VehicleType}, ui::components::GlobalDemandText};
 
 /// System to run simulation tick
 pub fn tick_simulation(time: Res<Time>, mut sim_world: ResMut<SimWorldResource>) {
@@ -24,6 +23,7 @@ pub fn sync_cars(
 ) {
     let world = &sim_world.0;
     const CAR_LENGTH: f32 = 0.5;
+    const TRUCK_LENGTH: f32 = 0.8;
 
     // Update existing cars and track which ones still exist
     let mut existing_car_ids: std::collections::HashSet<CarId> = std::collections::HashSet::new();
@@ -31,7 +31,11 @@ pub fn sync_cars(
     for (entity, link, mut transform) in car_query.iter_mut() {
         if let Some(car) = world.cars.get(&link.0) {
             existing_car_ids.insert(link.0);
-            transform.translation = Vec3::new(car.position.x, 0.3, car.position.z);
+            let y_height = match car.vehicle_type {
+                VehicleType::Car => 0.3,
+                VehicleType::Truck => 0.4,
+            };
+            transform.translation = Vec3::new(car.position.x, y_height, car.position.z);
             transform.rotation = Quat::from_rotation_y(car.angle);
         } else {
             // Car no longer exists in simulation, despawn
@@ -40,17 +44,26 @@ pub fn sync_cars(
         }
     }
 
-    // Spawn new cars
+    // Spawn new cars/trucks
     for (id, car) in &world.cars {
         if !existing_car_ids.contains(id) {
+            let (width, height, length, color, y_height) = match car.vehicle_type {
+                VehicleType::Car => (0.3, 0.2, CAR_LENGTH, Color::srgb(0.8, 0.2, 0.2), 0.3),
+                VehicleType::Truck => (0.4, 0.35, TRUCK_LENGTH, Color::srgb(0.2, 0.4, 0.8), 0.4),
+            };
+
             let entity = commands
                 .spawn((
                     SimSynced,
                     CarLink(*id),
-                    Mesh3d(meshes.add(Cuboid::new(0.3, 0.2, CAR_LENGTH))),
-                    MeshMaterial3d(materials.add(Color::srgb(0.8, 0.2, 0.2))),
-                    Transform::from_translation(Vec3::new(car.position.x, 0.3, car.position.z))
-                        .with_rotation(Quat::from_rotation_y(car.angle)),
+                    Mesh3d(meshes.add(Cuboid::new(width, height, length))),
+                    MeshMaterial3d(materials.add(color)),
+                    Transform::from_translation(Vec3::new(
+                        car.position.x,
+                        y_height,
+                        car.position.z,
+                    ))
+                    .with_rotation(Quat::from_rotation_y(car.angle)),
                 ))
                 .id();
             mappings.cars.insert(*id, entity);
