@@ -667,13 +667,13 @@ impl SimWorld {
                 workers_done.push((factory_id, house_id));
             }
 
-            // If truck is available and there's inventory and shops need products
+            // If truck is available and there are deliveries ready and shops need products
             if factory.truck_available()
-                && factory.inventory > 0
+                && factory.deliveries_ready > 0
                 && !shops_needing_products.is_empty()
             {
-                // Take a product for delivery
-                if factory.take_product() {
+                // Take a delivery for dispatch
+                if factory.take_delivery() {
                     // Pick a random shop that needs products (use index based on factory id for determinism)
                     let shop_index = factory_id.0 .0 % shops_needing_products.len();
                     let shop_intersection = shops_needing_products[shop_index];
@@ -687,11 +687,11 @@ impl SimWorld {
 
     /// Spawn workers from houses to factories
     fn spawn_workers(&mut self) {
-        // Get factories with high labor demand
+        // Get factories with high labor demand that can accept workers
         let factories_with_demand: Vec<(FactoryId, IntersectionId)> = self
             .factories
             .values()
-            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD)
+            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD && f.can_accept_workers())
             .map(|f| (f.id, f.intersection_id))
             .collect();
 
@@ -814,9 +814,9 @@ impl SimWorld {
                     }
                 }
                 Err(_) => {
-                    // Failed to spawn truck, return product to inventory
+                    // Failed to spawn truck, return delivery to ready
                     if let Some(factory) = self.factories.get_mut(&factory_id) {
-                        factory.inventory += 1;
+                        factory.deliveries_ready += 1;
                     }
                 }
             }
@@ -846,19 +846,42 @@ impl SimWorld {
                     {
                         match (vehicle_type, trip_type) {
                             (VehicleType::Car, TripType::Outbound) => {
-                                // Worker arrived at factory - register them with their house_id
+                                // Worker arrived at factory - try to register them with their house_id
+                                let mut worker_accepted = false;
                                 if let Some(house_id) = origin_house {
                                     if let Some(factory) = self
                                         .factories
                                         .values_mut()
                                         .find(|f| f.intersection_id == dest)
                                     {
-                                        factory.receive_worker(house_id);
+                                        worker_accepted = factory.receive_worker(house_id);
                                     }
                                 }
-                                // Remove car from tracking while at work (will respawn when returning home)
-                                self.road_network.remove_car_from_tracking(car_id);
-                                self.cars.remove(&car_id);
+                                
+                                if worker_accepted {
+                                    // Remove car from tracking while at work (will respawn when returning home)
+                                    self.road_network.remove_car_from_tracking(car_id);
+                                    self.cars.remove(&car_id);
+                                } else {
+                                    // Factory rejected worker (truck out or full), send them back home
+                                    if let Some(house_id) = origin_house {
+                                        let house_intersection = self.houses.get(&house_id).map(|h| h.intersection_id);
+                                        if let Some(house_intersection) = house_intersection {
+                                            // Spawn car returning home
+                                            let _ = self.spawn_vehicle(
+                                                dest,
+                                                house_intersection,
+                                                VehicleType::Car,
+                                                TripType::Return,
+                                                Some(house_id),
+                                                None,
+                                            );
+                                        }
+                                    }
+                                    // Despawn the current car
+                                    self.road_network.remove_car_from_tracking(car_id);
+                                    self.cars.remove(&car_id);
+                                }
                             }
                             (VehicleType::Car, TripType::Return) => {
                                 // Worker returned home - clear car reference and despawn
@@ -1050,11 +1073,11 @@ impl SimWorld {
         println!("--- Factories ---");
         for factory in self.factories.values() {
             println!(
-                "  Factory {:?}: demand={:.1}, inventory={}/{}, workers={}, truck={}",
+                "  Factory {:?}: demand={:.1}, deliveries={}/{}, workers={}, truck={}",
                 factory.id.0,
                 factory.labor_demand,
-                factory.inventory,
-                factory.max_inventory,
+                factory.deliveries_ready,
+                factory.max_deliveries,
                 factory.workers.len(),
                 if factory.truck.is_some() {
                     "out"
@@ -1109,7 +1132,7 @@ impl SimWorld {
     ///
     /// Returns metrics showing how many buildings have unmet demand:
     /// - Factories waiting: factories that need workers but no houses have available cars
-    /// - Shops waiting: shops that need products but no factories have inventory
+    /// - Shops waiting: shops that need products but no factories have deliveries ready
     /// - Houses waiting: houses with available cars but no factories need workers
     pub fn calculate_global_demand(&self) -> GlobalDemand {
         let total_factories = self.factories.len();
@@ -1134,9 +1157,9 @@ impl SimWorld {
             .filter(|s| s.product_demand >= PRODUCT_DEMAND_THRESHOLD)
             .count();
 
-        // Count factories with inventory available
-        let factories_with_inventory: usize =
-            self.factories.values().filter(|f| f.inventory > 0).count();
+        // Count factories with deliveries ready
+        let factories_with_deliveries: usize =
+            self.factories.values().filter(|f| f.deliveries_ready > 0).count();
 
         // Factories waiting: need workers but no available supply (no houses with cars)
         let factories_waiting = if houses_with_available_cars == 0 {
@@ -1145,8 +1168,8 @@ impl SimWorld {
             0
         };
 
-        // Shops waiting: need products but no supply (no factories with inventory)
-        let shops_waiting = if factories_with_inventory == 0 {
+        // Shops waiting: need products but no supply (no factories with deliveries ready)
+        let shops_waiting = if factories_with_deliveries == 0 {
             shops_needing_products
         } else {
             0

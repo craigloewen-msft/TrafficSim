@@ -22,8 +22,8 @@ use components::*;
 use input::{handle_camera_mouse, handle_camera_movement, handle_input};
 use spawner::spawn_initial_visuals;
 use sync::{
-    sync_cars, tick_simulation, update_factory_indicators, update_global_demand_text,
-    update_shop_indicators,
+    sync_cars, tick_simulation, update_factory_delivery_indicators, update_factory_indicators,
+    update_global_demand_text, update_shop_indicators,
 };
 use world::setup_world;
 
@@ -50,6 +50,7 @@ impl Plugin for TrafficSimUIPlugin {
                 (
                     sync_cars,
                     update_factory_indicators,
+                    update_factory_delivery_indicators,
                     update_shop_indicators,
                     update_global_demand_text,
                     handle_input,

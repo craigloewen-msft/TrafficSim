@@ -3,7 +3,8 @@
 use bevy::prelude::*;
 
 use super::components::{
-    CarLink, DemandIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced, SimWorldResource,
+    CarLink, DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced,
+    SimWorldResource,
 };
 use crate::{simulation::{CarId, VehicleType}, ui::components::GlobalDemandText};
 
@@ -151,6 +152,37 @@ pub fn update_global_demand_text(
             }
             GlobalDemandText::HousesWaiting => {
                 **text = format!("Houses: {}/{}", demand.houses_waiting, demand.total_houses);
+            }
+        }
+    }
+}
+
+/// System to update factory delivery indicators
+pub fn update_factory_delivery_indicators(
+    sim_world: Res<SimWorldResource>,
+    factory_query: Query<(&FactoryLink, &Children)>,
+    mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DeliveryIndicator>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    const DELIVERY_INDICATOR_ACTIVE_COLOR: Color = Color::srgb(1.0, 0.8, 0.0); // Gold/yellow
+    const DELIVERY_INDICATOR_EMPTY_COLOR: Color = Color::srgb(0.3, 0.3, 0.3); // Dark gray
+    
+    for (link, children) in factory_query.iter() {
+        if let Some(factory) = sim_world.0.factories.get(&link.0) {
+            // Iterate over delivery indicator children (query filters for DeliveryIndicator component)
+            let mut indicator_index = 0;
+            for child in children.iter() {
+                if let Ok(mut material_handle) = indicator_query.get_mut(*child) {
+                    if let Some(material) = materials.get_mut(&material_handle.0) {
+                        // Light up indicators based on deliveries_ready count
+                        if indicator_index < factory.deliveries_ready as usize {
+                            material.base_color = DELIVERY_INDICATOR_ACTIVE_COLOR;
+                        } else {
+                            material.base_color = DELIVERY_INDICATOR_EMPTY_COLOR;
+                        }
+                        indicator_index += 1;
+                    }
+                }
             }
         }
     }
