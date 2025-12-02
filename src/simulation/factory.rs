@@ -85,10 +85,4 @@ impl SimFactory {
     pub fn truck_available(&self) -> bool {
         self.truck.is_none()
     }
-
-    /// Determine if this factory should dispatch a truck
-    /// Returns true if the factory has deliveries ready and the truck is available
-    pub fn should_dispatch_truck(&self) -> bool {
-        self.truck_available() && self.deliveries_ready > 0
-    }
 }
