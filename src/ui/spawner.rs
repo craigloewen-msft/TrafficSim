@@ -3,8 +3,8 @@
 use bevy::prelude::*;
 
 use super::components::{
-    DemandIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink, RoadLink, ShopLink,
-    SimSynced, SimWorldResource,
+    DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink,
+    RoadLink, ShopLink, SimSynced, SimWorldResource,
 };
 use crate::simulation::SimRoadNetwork;
 use crate::simulation::{FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimRoad};
@@ -371,7 +371,7 @@ pub fn spawn_factory_visual(
         .id();
     mappings.factories.insert(id, entity);
 
-    // Add demand indicator
+    // Add demand indicator (top sphere)
     let indicator = commands
         .spawn((
             DemandIndicator,
@@ -381,6 +381,19 @@ pub fn spawn_factory_visual(
         ))
         .id();
     commands.entity(entity).add_child(indicator);
+
+    // Add delivery count indicators (side spheres - max 2)
+    for i in 0..2 {
+        let delivery_indicator = commands
+            .spawn((
+                DeliveryIndicator,
+                Mesh3d(meshes.add(Sphere::new(0.15))),
+                MeshMaterial3d(materials.add(Color::srgb(0.3, 0.3, 0.3))), // Dark gray by default
+                Transform::from_translation(Vec3::new(0.9, 0.3 + i as f32 * 0.4, 0.0)),
+            ))
+            .id();
+        commands.entity(entity).add_child(delivery_indicator);
+    }
 }
 
 fn spawn_shops(

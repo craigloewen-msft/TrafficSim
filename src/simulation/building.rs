@@ -46,10 +46,10 @@ pub struct SimFactory {
     pub labor_demand: f32,
     /// Rate at which labor demand increases per second
     pub labor_demand_rate: f32,
-    /// Current inventory of produced goods
-    pub inventory: u32,
-    /// Maximum inventory capacity
-    pub max_inventory: u32,
+    /// Number of deliveries ready to be sent (max 2)
+    pub deliveries_ready: u32,
+    /// Maximum number of deliveries that can be stored
+    pub max_deliveries: u32,
     /// The truck owned by this factory (if out making delivery)
     pub truck: Option<CarId>,
 }
@@ -62,26 +62,43 @@ impl SimFactory {
             workers: Vec::new(),
             labor_demand: 10.0,
             labor_demand_rate: 1.0,
-            inventory: 0,
-            max_inventory: 10,
+            deliveries_ready: 0,
+            max_deliveries: 2,
             truck: None,
         }
     }
 
     /// Receive a worker at the factory (store their house_id so we can send them home)
-    pub fn receive_worker(&mut self, house_id: HouseId) {
+    /// Only accepts workers if truck is available (not out making deliveries)
+    pub fn receive_worker(&mut self, house_id: HouseId) -> bool {
+        if !self.can_accept_workers() {
+            return false;
+        }
         self.labor_demand = (self.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
         self.workers.push((house_id, FACTORY_WORK_TIME));
+        true
     }
 
     /// Try to reserve a worker slot. Returns true if accepted.
+    /// Only accepts workers if truck is available (not out making deliveries)
     pub fn try_reserve_worker(&mut self) -> bool {
+        if !self.can_accept_workers() {
+            return false;
+        }
         if self.labor_demand >= LABOR_DEMAND_THRESHOLD {
             self.labor_demand = (self.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
             true
         } else {
             false
         }
+    }
+
+    /// Check if the factory can accept workers
+    /// Workers can only be accepted when:
+    /// 1. The truck is available (not out making deliveries)
+    /// 2. The factory is not full (has room for more deliveries)
+    fn can_accept_workers(&self) -> bool {
+        self.truck.is_none() && self.deliveries_ready < self.max_deliveries
     }
 
     /// Update the factory logic
@@ -96,9 +113,9 @@ impl SimFactory {
             *time_remaining -= delta_secs;
             if *time_remaining <= 0.0 {
                 workers_done.push(*house_id);
-                // Add to inventory when worker finishes
-                if self.inventory < self.max_inventory {
-                    self.inventory += 1;
+                // Add to deliveries when worker finishes
+                if self.deliveries_ready < self.max_deliveries {
+                    self.deliveries_ready += 1;
                 }
                 false
             } else {
@@ -109,10 +126,10 @@ impl SimFactory {
         workers_done
     }
 
-    /// Try to take one product from inventory for delivery
-    pub fn take_product(&mut self) -> bool {
-        if self.inventory > 0 {
-            self.inventory -= 1;
+    /// Try to take one delivery for truck dispatch
+    pub fn take_delivery(&mut self) -> bool {
+        if self.deliveries_ready > 0 && self.truck.is_none() {
+            self.deliveries_ready -= 1;
             true
         } else {
             false

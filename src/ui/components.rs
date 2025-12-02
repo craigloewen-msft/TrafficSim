@@ -75,6 +75,10 @@ pub struct ShopLink(pub ShopId);
 #[derive(Component)]
 pub struct DemandIndicator;
 
+/// Component to mark the delivery count indicator on factories
+#[derive(Component)]
+pub struct DeliveryIndicator;
+
 /// Resource to track Bevy entities mapped to simulation entities
 #[derive(Resource, Default)]
 pub struct EntityMappings {
