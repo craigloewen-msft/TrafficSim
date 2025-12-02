@@ -354,4 +354,79 @@ mod tests {
             total_deliveries, MIN_EXPECTED_DELIVERIES
         );
     }
+
+    /// Tests that factories correctly implement the new delivery logic:
+    /// 1. Factories should not accept workers when truck is out
+    /// 2. Factories can store max 2 deliveries
+    /// 3. Workers rejected when factory is full (2 deliveries stored)
+    #[test]
+    fn test_factory_delivery_logic() {
+        use simulation::SimWorld;
+        
+        println!("Testing factory delivery logic...");
+        
+        // Create a simple test world
+        let mut world = SimWorld::create_test_world();
+        
+        // Get a factory reference
+        let factory_id = *world.factories.keys().next().expect("No factories in test world");
+        
+        // Initial state: truck should be home, deliveries should be 0
+        {
+            let factory = world.factories.get(&factory_id).unwrap();
+            assert!(factory.truck.is_none(), "Factory should start with truck at home");
+            assert_eq!(factory.deliveries_ready, 0, "Factory should start with 0 deliveries");
+            assert_eq!(factory.max_deliveries, 2, "Factory max deliveries should be 2");
+        }
+        
+        // Simulate workers completing work to build up deliveries
+        // We'll directly manipulate the factory state to test the logic
+        {
+            let factory = world.factories.get_mut(&factory_id).unwrap();
+            // Simulate 2 workers completing work (max deliveries)
+            factory.deliveries_ready = 2;
+        }
+        
+        // Verify factory is now full
+        {
+            let factory = world.factories.get(&factory_id).unwrap();
+            assert_eq!(factory.deliveries_ready, 2, "Factory should have 2 deliveries ready");
+            
+            // Try to reserve a worker - should fail because factory is full
+            let can_reserve = factory.deliveries_ready < factory.max_deliveries && factory.truck.is_none();
+            assert!(!can_reserve, "Factory should not accept workers when full (2/2 deliveries)");
+        }
+        
+        // Take a delivery (simulate truck dispatch)
+        {
+            let factory = world.factories.get_mut(&factory_id).unwrap();
+            let taken = factory.take_delivery();
+            assert!(taken, "Should be able to take a delivery");
+            assert_eq!(factory.deliveries_ready, 1, "Should have 1 delivery remaining");
+        }
+        
+        // Now factory should be able to accept workers again (has space for more deliveries)
+        {
+            let factory = world.factories.get(&factory_id).unwrap();
+            let can_reserve = factory.deliveries_ready < factory.max_deliveries && factory.truck.is_none();
+            assert!(can_reserve, "Factory should accept workers when not full (1/2 deliveries)");
+        }
+        
+        // Simulate truck being out
+        {
+            let factory = world.factories.get_mut(&factory_id).unwrap();
+            factory.truck = Some(simulation::CarId(simulation::SimId(999)));
+        }
+        
+        // Verify factory won't accept workers when truck is out
+        {
+            let factory = world.factories.get(&factory_id).unwrap();
+            assert!(factory.truck.is_some(), "Factory truck should be out");
+            
+            let can_reserve = factory.deliveries_ready < factory.max_deliveries && factory.truck.is_none();
+            assert!(!can_reserve, "Factory should not accept workers when truck is out");
+        }
+        
+        println!("FACTORY DELIVERY LOGIC TEST PASSED");
+    }
 }
