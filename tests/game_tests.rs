@@ -5,6 +5,7 @@
 use traffic_sim::simulation::{
     GameState, SimWorld, COST_HOUSE, COST_ROAD, GOAL_DELIVERIES, GOAL_MONEY,
     Position, REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY, STARTING_BUDGET,
+    COMMUTE_HEALTHY_DISTANCE, SHORT_COMMUTE_PENALTY,
 };
 
 #[test]
@@ -23,7 +24,7 @@ fn test_game_state_revenue() {
     let initial_money = game_state.money;
 
     // Complete a worker trip
-    game_state.complete_worker_trip();
+    game_state.complete_worker_trip(COMMUTE_HEALTHY_DISTANCE + 5.0);
     assert_eq!(game_state.worker_trips_completed, 1);
     assert_eq!(
         game_state.money,
@@ -134,4 +135,18 @@ fn test_lose_condition() {
 
     game_state.update(0.1);
     assert!(game_state.is_lost);
+}
+
+#[test]
+fn test_short_commute_penalty_applied() {
+    let mut game_state = GameState::new();
+    let initial_money = game_state.money;
+
+    game_state.complete_worker_trip(0.0);
+
+    let expected_penalty = SHORT_COMMUTE_PENALTY;
+    assert_eq!(
+        game_state.money,
+        initial_money + REVENUE_WORKER_DELIVERY - expected_penalty
+    );
 }
