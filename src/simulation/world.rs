@@ -135,6 +135,9 @@ impl SimWorld {
         id
     }
 
+    /// Attempts to charge the given cost from the game state if one exists.
+    /// Returns `true` when no game state is attached so headless simulations
+    /// can operate without budget constraints.
     fn spend_for_game(&mut self, cost: i32) -> bool {
         match &mut self.game_state {
             Some(game_state) => game_state.spend(cost),
