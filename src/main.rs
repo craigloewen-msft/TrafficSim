@@ -19,7 +19,7 @@ struct Cli {
     ui: bool,
 
     /// Number of simulation ticks to run in test/headless mode
-    #[arg(long, default_value = "100")]
+    #[arg(long, default_value = "1000")]
     ticks: u32,
 
     /// Time delta per tick in seconds (test mode)
@@ -29,6 +29,10 @@ struct Cli {
     /// Random seed for reproducible simulations (test mode only)
     #[arg(long, default_value = "42")]
     seed: u64,
+
+    /// Display the simulation visually in the CLI with periodic updates
+    #[arg(long)]
+    cli_display: bool,
 }
 
 fn main() {
@@ -53,21 +57,163 @@ fn main() {
         println!("===========================================");
         println!();
         
-        run_headless(cli.ticks, cli.delta);
+        if cli.cli_display {
+            run_headless_with_display(cli.ticks, cli.delta);
+        } else {
+            run_headless(cli.ticks, cli.delta);
+        }
     }
 }
 
 /// Run the simulation in headless mode (no graphics)
 ///
-/// This mode runs the simulation for a fixed number of ticks and prints
-/// periodic summaries to the console. It's useful for testing and debugging
-/// the simulation logic without the overhead of the UI.
+/// This mode runs the simulation for a fixed number of ticks and validates
+/// that the simulation is working correctly. It outputs final statistics
+/// and validation results, similar to test mode.
 ///
 /// # Arguments
 /// * `ticks` - Number of simulation ticks to run
 /// * `delta` - Time delta per tick in seconds
 fn run_headless(ticks: u32, delta: f32) {
     println!("Running traffic simulation in headless mode...");
+    println!("Ticks: {}, Delta: {}s", ticks, delta);
+    println!();
+
+    let mut world = simulation::SimWorld::create_test_world();
+
+    // Track initial state for validation
+    let initial_houses = world.houses.len();
+    let initial_factories = world.factories.len();
+    let initial_shops = world.shops.len();
+    let initial_intersections = world.road_network.intersection_count();
+    let initial_roads = world.road_network.road_count();
+
+    let mut max_cars_observed = 0usize;
+    let mut errors: Vec<String> = Vec::new();
+
+    // Run simulation without delays
+    for tick in 1..=ticks {
+        world.tick(delta);
+
+        // Track maximum concurrent cars
+        max_cars_observed = max_cars_observed.max(world.cars.len());
+
+        // Validate simulation state periodically
+        if tick % 100 == 0 {
+            // Check for structural integrity
+            if world.road_network.intersection_count() != initial_intersections {
+                errors.push(format!(
+                    "Tick {}: Intersection count changed from {} to {}",
+                    tick, initial_intersections,
+                    world.road_network.intersection_count()
+                ));
+            }
+            if world.road_network.road_count() != initial_roads {
+                errors.push(format!(
+                    "Tick {}: Road count changed from {} to {}",
+                    tick, initial_roads,
+                    world.road_network.road_count()
+                ));
+            }
+            if world.houses.len() != initial_houses {
+                errors.push(format!(
+                    "Tick {}: House count changed from {} to {}",
+                    tick, initial_houses,
+                    world.houses.len()
+                ));
+            }
+            if world.factories.len() != initial_factories {
+                errors.push(format!(
+                    "Tick {}: Factory count changed from {} to {}",
+                    tick, initial_factories,
+                    world.factories.len()
+                ));
+            }
+            if world.shops.len() != initial_shops {
+                errors.push(format!(
+                    "Tick {}: Shop count changed from {} to {}",
+                    tick, initial_shops,
+                    world.shops.len()
+                ));
+            }
+        }
+    }
+
+    // Calculate total deliveries
+    let total_deliveries: usize = world.shops.values().map(|s| s.cars_received).sum();
+
+    // Print test results
+    println!("=== SIMULATION RESULTS ===");
+    println!("Simulation time: {:.2}s", world.time);
+    println!("Max concurrent cars: {}", max_cars_observed);
+    println!("Total deliveries to shops: {}", total_deliveries);
+    println!("Final car count: {}", world.cars.len());
+    println!();
+
+    // Validation checks
+    let mut validation_passed = true;
+
+    // Check: Cars should have spawned during simulation
+    if max_cars_observed == 0 {
+        errors.push("FAIL: No cars were ever spawned during simulation".to_string());
+        validation_passed = false;
+    } else {
+        println!(
+            "PASS: Cars spawned successfully (max: {})",
+            max_cars_observed
+        );
+    }
+
+    // Check: Road network should be intact
+    if world.road_network.intersection_count() == initial_intersections
+        && world.road_network.road_count() == initial_roads
+    {
+        println!("PASS: Road network integrity maintained");
+    } else {
+        errors.push("FAIL: Road network was unexpectedly modified".to_string());
+        validation_passed = false;
+    }
+
+    // Check: Buildings should be intact
+    if world.houses.len() == initial_houses
+        && world.factories.len() == initial_factories
+        && world.shops.len() == initial_shops
+    {
+        println!("PASS: Building integrity maintained");
+    } else {
+        errors.push("FAIL: Buildings were unexpectedly modified".to_string());
+        validation_passed = false;
+    }
+
+    // Print any errors
+    if !errors.is_empty() {
+        println!();
+        println!("=== ERRORS ===");
+        for error in &errors {
+            println!("  {}", error);
+        }
+    }
+
+    println!();
+    if validation_passed && errors.is_empty() {
+        println!("SIMULATION PASSED: All validations succeeded");
+    } else {
+        println!("SIMULATION FAILED: {} error(s) detected", errors.len());
+        std::process::exit(1);
+    }
+}
+
+/// Run the simulation in headless mode with CLI display
+///
+/// This mode runs the simulation for a fixed number of ticks and prints
+/// periodic summaries to the console with animated map display. It's useful 
+/// for visually observing the simulation logic without the overhead of the UI.
+///
+/// # Arguments
+/// * `ticks` - Number of simulation ticks to run
+/// * `delta` - Time delta per tick in seconds
+fn run_headless_with_display(ticks: u32, delta: f32) {
+    println!("Running traffic simulation in headless mode with CLI display...");
     println!("Ticks: {}, Delta: {}s", ticks, delta);
 
     // Calculate how many ticks equal 1 second of simulation time
