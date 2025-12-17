@@ -7,6 +7,9 @@ use crate::simulation::{
     CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimWorld,
 };
 
+/// Starting budget for the interactive UI sandbox
+pub const UI_STARTING_BUDGET: i32 = 100_000;
+
 /// Resource wrapper for the simulation world
 #[derive(Resource)]
 pub struct SimWorldResource(pub SimWorld);
@@ -15,10 +18,11 @@ impl Default for SimWorldResource {
     fn default() -> Self {
         // Create a game world with a starting setup
         let mut world = SimWorld::new_with_game();
-        
-        // Build the initial test world layout
-        world = SimWorld::build_test_world(world);
-        
+        // UI mode starts as a blank sandbox (no prebuilt roads/buildings)
+        if let Some(game_state) = world.game_state.as_mut() {
+            game_state.money = UI_STARTING_BUDGET;
+        }
+
         Self(world)
     }
 }

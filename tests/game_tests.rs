@@ -3,9 +3,9 @@
 //! This test validates that the game mechanics work correctly
 
 use traffic_sim::simulation::{
-    GameState, SimWorld, COST_HOUSE, COST_ROAD, GOAL_DELIVERIES, GOAL_MONEY,
-    Position, REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY, STARTING_BUDGET,
-    COMMUTE_HEALTHY_DISTANCE, SHORT_COMMUTE_PENALTY,
+    GameState, Position, SimWorld, COMMUTE_HEALTHY_DISTANCE, COST_HOUSE, COST_ROAD,
+    GOAL_DELIVERIES, GOAL_MONEY, REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY,
+    SHORT_COMMUTE_PENALTY, STARTING_BUDGET,
 };
 
 #[test]
@@ -26,10 +26,7 @@ fn test_game_state_revenue() {
     // Complete a worker trip
     game_state.complete_worker_trip(COMMUTE_HEALTHY_DISTANCE + 5.0);
     assert_eq!(game_state.worker_trips_completed, 1);
-    assert_eq!(
-        game_state.money,
-        initial_money + REVENUE_WORKER_DELIVERY
-    );
+    assert_eq!(game_state.money, initial_money + REVENUE_WORKER_DELIVERY);
 
     // Complete a shop delivery
     let money_before = game_state.money;

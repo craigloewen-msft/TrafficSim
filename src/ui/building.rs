@@ -9,7 +9,7 @@ use super::components::{
 };
 use super::spawner::{
     spawn_factory_visual, spawn_house_visual, spawn_intersection_visual, spawn_road_visual,
-    spawn_shop_visual,
+    spawn_shop_visual, HouseVisualAssets,
 };
 use crate::simulation::Position;
 use crate::ui::components::GlobalDemandText;
@@ -18,18 +18,19 @@ use crate::ui::components::GlobalDemandText;
 pub fn setup_building_ui(mut commands: Commands) {
     // Create game stats toolbar at top-left of screen
     commands
-        .spawn((Node {
-            width: Val::Auto,
-            height: Val::Auto,
-            position_type: PositionType::Absolute,
-            top: Val::Px(10.0),
-            left: Val::Px(10.0),
-            padding: UiRect::all(Val::Px(10.0)),
-            flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(5.0),
-            ..default()
-        },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
+        .spawn((
+            Node {
+                width: Val::Auto,
+                height: Val::Auto,
+                position_type: PositionType::Absolute,
+                top: Val::Px(10.0),
+                left: Val::Px(10.0),
+                padding: UiRect::all(Val::Px(10.0)),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(5.0),
+                ..default()
+            },
+            BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.7)),
         ))
         .with_children(|parent| {
             // Money display
@@ -42,7 +43,7 @@ pub fn setup_building_ui(mut commands: Commands) {
                 TextColor(Color::srgb(0.2, 1.0, 0.2)),
                 GlobalDemandText::Money,
             ));
-            
+
             // Worker trips
             parent.spawn((
                 Text::new("Worker Trips: 0"),
@@ -53,7 +54,7 @@ pub fn setup_building_ui(mut commands: Commands) {
                 TextColor(Color::srgb(0.9, 0.9, 0.9)),
                 GlobalDemandText::WorkerTrips,
             ));
-            
+
             // Shop deliveries
             parent.spawn((
                 Text::new("Shop Deliveries: 0 / 50"),
@@ -64,7 +65,7 @@ pub fn setup_building_ui(mut commands: Commands) {
                 TextColor(Color::srgb(0.9, 0.9, 0.9)),
                 GlobalDemandText::ShopDeliveries,
             ));
-            
+
             // Goal status
             parent.spawn((
                 Text::new("Goal: Deliver 50 shipments!"),
@@ -512,6 +513,7 @@ pub fn handle_placement_click(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut mappings: ResMut<EntityMappings>,
+    mut house_assets: ResMut<HouseVisualAssets>,
     // Check if mouse is over UI
     interaction_query: Query<&Interaction, With<Button>>,
 ) {
@@ -545,14 +547,16 @@ pub fn handle_placement_click(
             if let Some(start) = building_state.road_start {
                 // Second click - create the road
                 let snap_distance = building_state.snap_distance;
-                
+
                 // Try to add road with game cost checking
                 let result = if world.game_state.is_some() {
                     world.try_add_road_at_positions(start, pos, snap_distance)
                 } else {
-                    world.add_road_at_positions(start, pos, snap_distance).map(Some)
+                    world
+                        .add_road_at_positions(start, pos, snap_distance)
+                        .map(Some)
                 };
-                
+
                 match result {
                     Ok(Some((start_id, end_id, forward_road, _))) => {
                         // Spawn visuals for new intersection(s) if they don't exist
@@ -644,6 +648,7 @@ pub fn handle_placement_click(
                 &mut meshes,
                 &mut materials,
                 &mut mappings,
+                &mut house_assets,
             );
         }
         BuildingMode::None => {}
@@ -659,6 +664,7 @@ fn spawn_building_at_intersection(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     mappings: &mut ResMut<EntityMappings>,
+    house_assets: &mut HouseVisualAssets,
 ) {
     let position = match world.intersections.get(&intersection_id) {
         Some(intersection) => intersection.position,
@@ -672,9 +678,17 @@ fn spawn_building_at_intersection(
             } else {
                 Some(world.add_house(intersection_id))
             };
-            
+
             if let Some(house_id) = maybe_house_id {
-                spawn_house_visual(commands, meshes, materials, house_id, &position, mappings);
+                spawn_house_visual(
+                    commands,
+                    meshes,
+                    materials,
+                    house_id,
+                    &position,
+                    mappings,
+                    house_assets,
+                );
                 bevy::log::info!("Created house at {:?}", intersection_id);
             } else {
                 bevy::log::warn!("Insufficient funds to create house");
@@ -686,7 +700,7 @@ fn spawn_building_at_intersection(
             } else {
                 Some(world.add_factory(intersection_id))
             };
-            
+
             if let Some(factory_id) = maybe_factory_id {
                 spawn_factory_visual(commands, meshes, materials, factory_id, &position, mappings);
                 bevy::log::info!("Created factory at {:?}", intersection_id);
@@ -700,7 +714,7 @@ fn spawn_building_at_intersection(
             } else {
                 Some(world.add_shop(intersection_id))
             };
-            
+
             if let Some(shop_id) = maybe_shop_id {
                 spawn_shop_visual(commands, meshes, materials, shop_id, &position, mappings);
                 bevy::log::info!("Created shop at {:?}", intersection_id);

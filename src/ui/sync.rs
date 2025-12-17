@@ -3,8 +3,8 @@
 use bevy::prelude::*;
 
 use super::components::{
-    CarLink, DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, HouseLink, ShopLink, SimSynced,
-    SimWorldResource,
+    CarLink, DeliveryIndicator, DemandIndicator, EntityMappings, FactoryLink, HouseLink, ShopLink,
+    SimSynced, SimWorldResource,
 };
 use crate::{
     simulation::{CarId, VehicleType, GOAL_DELIVERIES, GOAL_MONEY},
@@ -201,10 +201,7 @@ pub fn update_global_demand_text(
                     } else if game_state.is_lost {
                         **text = "💀 BANKRUPT - Game Over 💀".to_string();
                     } else {
-                        **text = format!(
-                            "Goal: {} deliveries OR ${}",
-                            GOAL_DELIVERIES, GOAL_MONEY
-                        );
+                        **text = format!("Goal: {} deliveries OR ${}", GOAL_DELIVERIES, GOAL_MONEY);
                     }
                 } else {
                     **text = "Goal: N/A".to_string();
@@ -223,7 +220,7 @@ pub fn update_factory_delivery_indicators(
 ) {
     const DELIVERY_INDICATOR_ACTIVE_COLOR: Color = Color::srgb(1.0, 0.8, 0.0); // Gold/yellow
     const DELIVERY_INDICATOR_EMPTY_COLOR: Color = Color::srgb(0.3, 0.3, 0.3); // Dark gray
-    
+
     for (link, children) in factory_query.iter() {
         if let Some(factory) = sim_world.0.factories.get(&link.0) {
             // Iterate over delivery indicator children (query filters for DeliveryIndicator component)
