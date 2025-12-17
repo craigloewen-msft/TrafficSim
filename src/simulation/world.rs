@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use super::building::{SimFactory, SimHouse, SimShop};
 use super::car::{CarUpdateResult, SimCar};
-use super::game_state::GameState;
+use super::game_state::{GameState, COST_FACTORY, COST_HOUSE, COST_ROAD, COST_SHOP};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
@@ -81,7 +81,7 @@ impl Default for SimWorld {
 }
 
 impl SimWorld {
-    pub fn new() -> Self {
+    fn new_internal(rng: Option<StdRng>, game_state: Option<GameState>) -> Self {
         Self {
             road_network: SimRoadNetwork::new(),
             intersections: HashMap::new(),
@@ -91,41 +91,23 @@ impl SimWorld {
             shops: HashMap::new(),
             next_id: 0,
             time: 0.0,
-            rng: None,
-            game_state: None,
+            rng,
+            game_state,
         }
+    }
+
+    pub fn new() -> Self {
+        Self::new_internal(None, None)
     }
 
     /// Create a new SimWorld with a seeded RNG for reproducible simulations
     pub fn new_with_seed(seed: u64) -> Self {
-        Self {
-            road_network: SimRoadNetwork::new(),
-            intersections: HashMap::new(),
-            cars: HashMap::new(),
-            houses: HashMap::new(),
-            factories: HashMap::new(),
-            shops: HashMap::new(),
-            next_id: 0,
-            time: 0.0,
-            rng: Some(StdRng::seed_from_u64(seed)),
-            game_state: None,
-        }
+        Self::new_internal(Some(StdRng::seed_from_u64(seed)), None)
     }
 
     /// Create a new SimWorld with game state enabled (for playing as a game)
     pub fn new_with_game() -> Self {
-        Self {
-            road_network: SimRoadNetwork::new(),
-            intersections: HashMap::new(),
-            cars: HashMap::new(),
-            houses: HashMap::new(),
-            factories: HashMap::new(),
-            shops: HashMap::new(),
-            next_id: 0,
-            time: 0.0,
-            rng: None,
-            game_state: Some(GameState::new()),
-        }
+        Self::new_internal(None, Some(GameState::new()))
     }
 
     /// Get a random value in the given range, using seeded RNG if available
@@ -151,6 +133,16 @@ impl SimWorld {
         let id = SimId(self.next_id);
         self.next_id += 1;
         id
+    }
+
+    /// Attempts to charge the given cost from the game state if one exists.
+    /// Returns `true` when no game state is attached so headless simulations
+    /// can operate without budget constraints.
+    fn spend_for_game(&mut self, cost: i32) -> bool {
+        match &mut self.game_state {
+            Some(game_state) => game_state.spend(cost),
+            None => true,
+        }
     }
 
     /// Add an intersection to the world
@@ -223,11 +215,8 @@ impl SimWorld {
     /// Add a house with game cost checking
     /// Returns Some(house_id) if successful, None if insufficient funds
     pub fn try_add_house(&mut self, intersection_id: IntersectionId) -> Option<HouseId> {
-        use super::game_state::COST_HOUSE;
-        if let Some(game_state) = &mut self.game_state {
-            if !game_state.spend(COST_HOUSE) {
-                return None;
-            }
+        if !self.spend_for_game(COST_HOUSE) {
+            return None;
         }
         Some(self.add_house(intersection_id))
     }
@@ -235,11 +224,8 @@ impl SimWorld {
     /// Add a factory with game cost checking
     /// Returns Some(factory_id) if successful, None if insufficient funds
     pub fn try_add_factory(&mut self, intersection_id: IntersectionId) -> Option<FactoryId> {
-        use super::game_state::COST_FACTORY;
-        if let Some(game_state) = &mut self.game_state {
-            if !game_state.spend(COST_FACTORY) {
-                return None;
-            }
+        if !self.spend_for_game(COST_FACTORY) {
+            return None;
         }
         Some(self.add_factory(intersection_id))
     }
@@ -247,11 +233,8 @@ impl SimWorld {
     /// Add a shop with game cost checking
     /// Returns Some(shop_id) if successful, None if insufficient funds
     pub fn try_add_shop(&mut self, intersection_id: IntersectionId) -> Option<ShopId> {
-        use super::game_state::COST_SHOP;
-        if let Some(game_state) = &mut self.game_state {
-            if !game_state.spend(COST_SHOP) {
-                return None;
-            }
+        if !self.spend_for_game(COST_SHOP) {
+            return None;
         }
         Some(self.add_shop(intersection_id))
     }
@@ -263,11 +246,8 @@ impl SimWorld {
         start: IntersectionId,
         end: IntersectionId,
     ) -> Result<Option<(RoadId, RoadId)>> {
-        use super::game_state::COST_ROAD;
-        if let Some(game_state) = &mut self.game_state {
-            if !game_state.spend(COST_ROAD) {
-                return Ok(None);
-            }
+        if !self.spend_for_game(COST_ROAD) {
+            return Ok(None);
         }
         self.add_two_way_road(start, end).map(Some)
     }
@@ -280,11 +260,8 @@ impl SimWorld {
         end_pos: Position,
         snap_distance: f32,
     ) -> Result<Option<(IntersectionId, IntersectionId, RoadId, RoadId)>> {
-        use super::game_state::COST_ROAD;
-        if let Some(game_state) = &mut self.game_state {
-            if !game_state.spend(COST_ROAD) {
-                return Ok(None);
-            }
+        if !self.spend_for_game(COST_ROAD) {
+            return Ok(None);
         }
         self.add_road_at_positions(start_pos, end_pos, snap_distance)
             .map(Some)
