@@ -191,14 +191,14 @@ fn run_simulation_validation(
 ///
 /// # Arguments
 /// * `validation_passed` - Whether all validation checks passed
-/// * `total_deliveries` - Total number of deliveries completed
 /// * `max_cars_observed` - Maximum number of concurrent cars
 /// * `errors` - List of error messages
-fn print_validation_results(
+/// * `mode` - Mode prefix for messages ("SIMULATION" or "TEST")
+fn print_validation_results_with_mode(
     validation_passed: bool,
-    total_deliveries: usize,
     max_cars_observed: usize,
     errors: &[String],
+    mode: &str,
 ) {
     // Print success/failure for each check
     if max_cars_observed == 0 {
@@ -233,10 +233,26 @@ fn print_validation_results(
 
     println!();
     if validation_passed && errors.is_empty() {
-        println!("SIMULATION PASSED: All validations succeeded");
+        println!("{} PASSED: All validations succeeded", mode);
     } else {
-        println!("SIMULATION FAILED: {} error(s) detected", errors.len());
+        println!("{} FAILED: {} error(s) detected", mode, errors.len());
     }
+}
+
+/// Print validation results for normal simulation mode
+///
+/// # Arguments
+/// * `validation_passed` - Whether all validation checks passed
+/// * `total_deliveries` - Total number of deliveries completed (unused but kept for compatibility)
+/// * `max_cars_observed` - Maximum number of concurrent cars
+/// * `errors` - List of error messages
+fn print_validation_results(
+    validation_passed: bool,
+    _total_deliveries: usize,
+    max_cars_observed: usize,
+    errors: &[String],
+) {
+    print_validation_results_with_mode(validation_passed, max_cars_observed, errors, "SIMULATION");
 }
 
 /// Run the simulation in headless mode (no graphics)
@@ -444,43 +460,7 @@ fn print_test_validation_results(
     max_cars_observed: usize,
     errors: &[String],
 ) {
-    // Print success/failure for each check
-    if max_cars_observed == 0 {
-        println!("FAIL: No cars were ever spawned during simulation");
-    } else {
-        println!(
-            "PASS: Cars spawned successfully (max: {})",
-            max_cars_observed
-        );
-    }
-
-    if errors.iter().any(|e| e.contains("Road network")) {
-        println!("FAIL: Road network was unexpectedly modified");
-    } else {
-        println!("PASS: Road network integrity maintained");
-    }
-
-    if errors.iter().any(|e| e.contains("Building") || e.contains("House") || e.contains("Factory") || e.contains("Shop")) {
-        println!("FAIL: Buildings were unexpectedly modified");
-    } else {
-        println!("PASS: Building integrity maintained");
-    }
-
-    // Print any errors
-    if !errors.is_empty() {
-        println!();
-        println!("=== ERRORS ===");
-        for error in errors {
-            println!("  {}", error);
-        }
-    }
-
-    println!();
-    if validation_passed && errors.is_empty() {
-        println!("TEST PASSED: All validations succeeded");
-    } else {
-        println!("TEST FAILED: {} error(s) detected", errors.len());
-    }
+    print_validation_results_with_mode(validation_passed, max_cars_observed, errors, "TEST");
 }
 
 #[cfg(test)]
