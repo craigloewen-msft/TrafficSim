@@ -13,7 +13,13 @@ pub struct SimWorldResource(pub SimWorld);
 
 impl Default for SimWorldResource {
     fn default() -> Self {
-        Self(SimWorld::create_test_world())
+        // Create a game world with a starting setup
+        let mut world = SimWorld::new_with_game();
+        
+        // Build the initial test world layout
+        world = SimWorld::build_test_world(world);
+        
+        Self(world)
     }
 }
 
@@ -145,4 +151,12 @@ pub enum GlobalDemandText {
     ShopsWaiting,
     /// Houses waiting (with available cars but no demand)
     HousesWaiting,
+    /// Player's money
+    Money,
+    /// Worker trips completed
+    WorkerTrips,
+    /// Shop deliveries completed
+    ShopDeliveries,
+    /// Goal status message
+    GoalStatus,
 }

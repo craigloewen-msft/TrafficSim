@@ -6,7 +6,10 @@ use super::components::{
     CarLink, DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced,
     SimWorldResource,
 };
-use crate::{simulation::{CarId, VehicleType}, ui::components::GlobalDemandText};
+use crate::{
+    simulation::{CarId, VehicleType, GOAL_DELIVERIES, GOAL_MONEY},
+    ui::components::GlobalDemandText,
+};
 
 /// System to run simulation tick
 pub fn tick_simulation(time: Res<Time>, mut sim_world: ResMut<SimWorldResource>) {
@@ -152,6 +155,46 @@ pub fn update_global_demand_text(
             }
             GlobalDemandText::HousesWaiting => {
                 **text = format!("Houses: {}/{}", demand.houses_waiting, demand.total_houses);
+            }
+            GlobalDemandText::Money => {
+                if let Some(game_state) = &sim_world.0.game_state {
+                    **text = format!("Money: ${}", game_state.money);
+                } else {
+                    **text = "Money: N/A".to_string();
+                }
+            }
+            GlobalDemandText::WorkerTrips => {
+                if let Some(game_state) = &sim_world.0.game_state {
+                    **text = format!("Worker Trips: {}", game_state.worker_trips_completed);
+                } else {
+                    **text = "Worker Trips: N/A".to_string();
+                }
+            }
+            GlobalDemandText::ShopDeliveries => {
+                if let Some(game_state) = &sim_world.0.game_state {
+                    **text = format!(
+                        "Shop Deliveries: {} / {}",
+                        game_state.shop_deliveries_completed, GOAL_DELIVERIES
+                    );
+                } else {
+                    **text = "Shop Deliveries: N/A".to_string();
+                }
+            }
+            GlobalDemandText::GoalStatus => {
+                if let Some(game_state) = &sim_world.0.game_state {
+                    if game_state.is_won {
+                        **text = "🎉 YOU WIN! Goal Complete! 🎉".to_string();
+                    } else if game_state.is_lost {
+                        **text = "💀 BANKRUPT - Game Over 💀".to_string();
+                    } else {
+                        **text = format!(
+                            "Goal: {} deliveries OR ${}",
+                            GOAL_DELIVERIES, GOAL_MONEY
+                        );
+                    }
+                } else {
+                    **text = "Goal: N/A".to_string();
+                }
             }
         }
     }
