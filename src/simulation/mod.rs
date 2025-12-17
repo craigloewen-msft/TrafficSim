@@ -7,6 +7,7 @@
 mod building;
 mod car;
 mod factory;
+mod game_state;
 mod intersection;
 mod road_network;
 mod types;
@@ -20,6 +21,11 @@ pub use building::{SimFactory, SimHouse, SimShop};
 pub use car::{CarUpdateResult, SimCar};
 #[allow(unused_imports)]
 pub use factory::{FACTORY_WORK_TIME, LABOR_DEMAND_PER_WORKER, LABOR_DEMAND_THRESHOLD};
+#[allow(unused_imports)]
+pub use game_state::{
+    GameState, COST_FACTORY, COST_HOUSE, COST_ROAD, COST_SHOP, GOAL_DELIVERIES, GOAL_MONEY,
+    REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY, STARTING_BUDGET,
+};
 #[allow(unused_imports)]
 pub use intersection::SimIntersection;
 #[allow(unused_imports)]

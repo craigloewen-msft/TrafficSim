@@ -14,6 +14,7 @@ use std::collections::HashMap;
 use super::building::{SimFactory, SimHouse, SimShop, PRODUCT_DEMAND_THRESHOLD};
 use super::factory::LABOR_DEMAND_THRESHOLD;
 use super::car::{CarUpdateResult, SimCar};
+use super::game_state::GameState;
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
@@ -69,6 +70,9 @@ pub struct SimWorld {
 
     /// Optional seeded RNG for reproducible simulations
     rng: Option<StdRng>,
+
+    /// Game state tracking (optional - only used when playing as a game)
+    pub game_state: Option<GameState>,
 }
 
 impl Default for SimWorld {
@@ -89,6 +93,7 @@ impl SimWorld {
             next_id: 0,
             time: 0.0,
             rng: None,
+            game_state: None,
         }
     }
 
@@ -104,6 +109,23 @@ impl SimWorld {
             next_id: 0,
             time: 0.0,
             rng: Some(StdRng::seed_from_u64(seed)),
+            game_state: None,
+        }
+    }
+
+    /// Create a new SimWorld with game state enabled (for playing as a game)
+    pub fn new_with_game() -> Self {
+        Self {
+            road_network: SimRoadNetwork::new(),
+            intersections: HashMap::new(),
+            cars: HashMap::new(),
+            houses: HashMap::new(),
+            factories: HashMap::new(),
+            shops: HashMap::new(),
+            next_id: 0,
+            time: 0.0,
+            rng: None,
+            game_state: Some(GameState::new()),
         }
     }
 
@@ -197,6 +219,76 @@ impl SimWorld {
         let shop = SimShop::new(id, intersection_id);
         self.shops.insert(id, shop);
         id
+    }
+
+    /// Add a house with game cost checking
+    /// Returns Some(house_id) if successful, None if insufficient funds
+    pub fn try_add_house(&mut self, intersection_id: IntersectionId) -> Option<HouseId> {
+        use super::game_state::COST_HOUSE;
+        if let Some(game_state) = &mut self.game_state {
+            if !game_state.spend(COST_HOUSE) {
+                return None;
+            }
+        }
+        Some(self.add_house(intersection_id))
+    }
+
+    /// Add a factory with game cost checking
+    /// Returns Some(factory_id) if successful, None if insufficient funds
+    pub fn try_add_factory(&mut self, intersection_id: IntersectionId) -> Option<FactoryId> {
+        use super::game_state::COST_FACTORY;
+        if let Some(game_state) = &mut self.game_state {
+            if !game_state.spend(COST_FACTORY) {
+                return None;
+            }
+        }
+        Some(self.add_factory(intersection_id))
+    }
+
+    /// Add a shop with game cost checking
+    /// Returns Some(shop_id) if successful, None if insufficient funds
+    pub fn try_add_shop(&mut self, intersection_id: IntersectionId) -> Option<ShopId> {
+        use super::game_state::COST_SHOP;
+        if let Some(game_state) = &mut self.game_state {
+            if !game_state.spend(COST_SHOP) {
+                return None;
+            }
+        }
+        Some(self.add_shop(intersection_id))
+    }
+
+    /// Add a two-way road with game cost checking
+    /// Returns Some((forward, backward)) if successful, None if insufficient funds
+    pub fn try_add_two_way_road(
+        &mut self,
+        start: IntersectionId,
+        end: IntersectionId,
+    ) -> Result<Option<(RoadId, RoadId)>> {
+        use super::game_state::COST_ROAD;
+        if let Some(game_state) = &mut self.game_state {
+            if !game_state.spend(COST_ROAD) {
+                return Ok(None);
+            }
+        }
+        self.add_two_way_road(start, end).map(Some)
+    }
+
+    /// Add roads at positions with game cost checking
+    /// Returns Some(...) if successful, None if insufficient funds
+    pub fn try_add_road_at_positions(
+        &mut self,
+        start_pos: Position,
+        end_pos: Position,
+        snap_distance: f32,
+    ) -> Result<Option<(IntersectionId, IntersectionId, RoadId, RoadId)>> {
+        use super::game_state::COST_ROAD;
+        if let Some(game_state) = &mut self.game_state {
+            if !game_state.spend(COST_ROAD) {
+                return Ok(None);
+            }
+        }
+        self.add_road_at_positions(start_pos, end_pos, snap_distance)
+            .map(Some)
     }
 
     /// Remove a house from the world
@@ -757,6 +849,11 @@ impl SimWorld {
     pub fn tick(&mut self, delta_secs: f32) {
         self.time += delta_secs;
 
+        // Update game state if enabled
+        if let Some(game_state) = &mut self.game_state {
+            game_state.update(delta_secs);
+        }
+
         // Update intersections
         self.update_intersections(delta_secs);
 
@@ -889,6 +986,10 @@ impl SimWorld {
                                         house.car = None;
                                     }
                                 }
+                                // Track worker trip completion in game state
+                                if let Some(game_state) = &mut self.game_state {
+                                    game_state.complete_worker_trip();
+                                }
                                 self.road_network.remove_car_from_tracking(car_id);
                                 self.cars.remove(&car_id);
                             }
@@ -942,6 +1043,10 @@ impl SimWorld {
                                         factory.truck = None;
                                     }
                                 }
+                                // Track shop delivery completion in game state
+                                if let Some(game_state) = &mut self.game_state {
+                                    game_state.complete_shop_delivery();
+                                }
                                 self.road_network.remove_car_from_tracking(car_id);
                                 self.cars.remove(&car_id);
                             }
@@ -981,7 +1086,7 @@ impl SimWorld {
     }
 
     /// Internal helper to build the test world structure
-    fn build_test_world(mut world: SimWorld) -> Self {
+    pub fn build_test_world(mut world: SimWorld) -> Self {
         // Create a 3x3 grid of intersections (main roads)
         let spacing = 20.0;
         let mut grid = [[IntersectionId(SimId(0)); 3]; 3];
