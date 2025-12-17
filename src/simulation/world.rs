@@ -9,6 +9,7 @@ use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::Rng;
 use rand::SeedableRng;
+use log::warn;
 use std::collections::HashMap;
 
 use super::building::{SimFactory, SimHouse, SimShop};
@@ -971,10 +972,20 @@ impl SimWorld {
                                             (Some(house_pos), Some(factory_pos)) => {
                                                 house_pos.distance(&factory_pos)
                                             }
-                                            _ => 0.0,
+                                            _ => {
+                                                warn!(
+                                                    "Missing house or factory position for worker commute; defaulting to a zero-distance commute, which applies the maximum commute penalty"
+                                                );
+                                                0.0
+                                            }
                                         }
                                     }
-                                    _ => 0.0,
+                                    _ => {
+                                        warn!(
+                                            "Missing worker identifiers for commute penalty; defaulting to a zero-distance commute, which applies the maximum commute penalty"
+                                        );
+                                        0.0
+                                    }
                                 };
                                 // Worker returned home - clear car reference and despawn
                                 if let Some(house_id) = origin_house {

@@ -85,15 +85,27 @@ impl GameState {
     pub fn earn(&mut self, amount: i32) {
         self.money += amount;
     }
+
+    /// Calculate the commute penalty for a worker trip.
+    ///
+    /// Commutes shorter than [`COMMUTE_HEALTHY_DISTANCE`] apply a linear penalty
+    /// up to [`SHORT_COMMUTE_PENALTY`], representing quality-of-life costs for
+    /// living too close to industrial sites.
+    fn compute_commute_penalty(commute_distance: f32) -> i32 {
+        if COMMUTE_HEALTHY_DISTANCE <= 0.0 {
+            // Invalid configuration; avoid a non-positive denominator by falling back to the maximum penalty.
+            return SHORT_COMMUTE_PENALTY;
+        }
+        let distance_penalty_ratio =
+            ((COMMUTE_HEALTHY_DISTANCE - commute_distance).max(0.0) / COMMUTE_HEALTHY_DISTANCE)
+                .clamp(0.0, 1.0);
+        (distance_penalty_ratio * SHORT_COMMUTE_PENALTY as f32).round() as i32
+    }
     
     /// Record a worker trip completion and award revenue
     pub fn complete_worker_trip(&mut self, commute_distance: f32) {
         self.worker_trips_completed += 1;
-        let distance_penalty_ratio =
-            ((COMMUTE_HEALTHY_DISTANCE - commute_distance).max(0.0) / COMMUTE_HEALTHY_DISTANCE)
-                .clamp(0.0, 1.0);
-        let penalty =
-            (distance_penalty_ratio * SHORT_COMMUTE_PENALTY as f32).round() as i32;
+        let penalty = Self::compute_commute_penalty(commute_distance);
         self.earn(REVENUE_WORKER_DELIVERY - penalty);
     }
     
