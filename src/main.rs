@@ -60,26 +60,34 @@ fn main() {
         if cli.cli_display {
             run_headless_with_display(cli.ticks, cli.delta);
         } else {
-            run_headless(cli.ticks, cli.delta);
+            run_headless(cli.ticks, cli.delta, cli.seed);
         }
     }
 }
 
-/// Run the simulation in headless mode (no graphics)
+/// Helper function to run simulation with validation
 ///
-/// This mode runs the simulation for a fixed number of ticks and validates
-/// that the simulation is working correctly. It outputs final statistics
-/// and validation results, similar to test mode.
+/// Runs a simulation for the specified number of ticks and validates
+/// that the simulation state remains consistent. Returns validation
+/// results and statistics.
 ///
 /// # Arguments
 /// * `ticks` - Number of simulation ticks to run
 /// * `delta` - Time delta per tick in seconds
-fn run_headless(ticks: u32, delta: f32) {
-    println!("Running traffic simulation in headless mode...");
-    println!("Ticks: {}, Delta: {}s", ticks, delta);
-    println!();
-
-    let mut world = simulation::SimWorld::create_test_world();
+/// * `seed` - Random seed for deterministic simulation
+///
+/// # Returns
+/// A tuple containing:
+/// * `validation_passed` - Whether all validation checks passed
+/// * `total_deliveries` - Total number of deliveries completed
+/// * `max_cars_observed` - Maximum number of concurrent cars
+/// * `errors` - List of error messages (if any)
+fn run_simulation_validation(
+    ticks: u32,
+    delta: f32,
+    seed: u64,
+) -> (bool, usize, usize, Vec<String>) {
+    let mut world = simulation::SimWorld::create_test_world_with_seed(seed);
 
     // Track initial state for validation
     let initial_houses = world.houses.len();
@@ -157,6 +165,44 @@ fn run_headless(ticks: u32, delta: f32) {
     if max_cars_observed == 0 {
         errors.push("FAIL: No cars were ever spawned during simulation".to_string());
         validation_passed = false;
+    }
+
+    // Check: Road network should be intact
+    if world.road_network.intersection_count() != initial_intersections
+        || world.road_network.road_count() != initial_roads
+    {
+        errors.push("FAIL: Road network was unexpectedly modified".to_string());
+        validation_passed = false;
+    }
+
+    // Check: Buildings should be intact
+    if world.houses.len() != initial_houses
+        || world.factories.len() != initial_factories
+        || world.shops.len() != initial_shops
+    {
+        errors.push("FAIL: Buildings were unexpectedly modified".to_string());
+        validation_passed = false;
+    }
+
+    (validation_passed, total_deliveries, max_cars_observed, errors)
+}
+
+/// Print validation results in a formatted manner
+///
+/// # Arguments
+/// * `validation_passed` - Whether all validation checks passed
+/// * `total_deliveries` - Total number of deliveries completed
+/// * `max_cars_observed` - Maximum number of concurrent cars
+/// * `errors` - List of error messages
+fn print_validation_results(
+    validation_passed: bool,
+    total_deliveries: usize,
+    max_cars_observed: usize,
+    errors: &[String],
+) {
+    // Print success/failure for each check
+    if max_cars_observed == 0 {
+        println!("FAIL: No cars were ever spawned during simulation");
     } else {
         println!(
             "PASS: Cars spawned successfully (max: {})",
@@ -164,32 +210,23 @@ fn run_headless(ticks: u32, delta: f32) {
         );
     }
 
-    // Check: Road network should be intact
-    if world.road_network.intersection_count() == initial_intersections
-        && world.road_network.road_count() == initial_roads
-    {
-        println!("PASS: Road network integrity maintained");
+    if errors.iter().any(|e| e.contains("Road network")) {
+        println!("FAIL: Road network was unexpectedly modified");
     } else {
-        errors.push("FAIL: Road network was unexpectedly modified".to_string());
-        validation_passed = false;
+        println!("PASS: Road network integrity maintained");
     }
 
-    // Check: Buildings should be intact
-    if world.houses.len() == initial_houses
-        && world.factories.len() == initial_factories
-        && world.shops.len() == initial_shops
-    {
-        println!("PASS: Building integrity maintained");
+    if errors.iter().any(|e| e.contains("Building") || e.contains("House") || e.contains("Factory") || e.contains("Shop")) {
+        println!("FAIL: Buildings were unexpectedly modified");
     } else {
-        errors.push("FAIL: Buildings were unexpectedly modified".to_string());
-        validation_passed = false;
+        println!("PASS: Building integrity maintained");
     }
 
     // Print any errors
     if !errors.is_empty() {
         println!();
         println!("=== ERRORS ===");
-        for error in &errors {
+        for error in errors {
             println!("  {}", error);
         }
     }
@@ -199,6 +236,36 @@ fn run_headless(ticks: u32, delta: f32) {
         println!("SIMULATION PASSED: All validations succeeded");
     } else {
         println!("SIMULATION FAILED: {} error(s) detected", errors.len());
+    }
+}
+
+/// Run the simulation in headless mode (no graphics)
+///
+/// This mode runs the simulation for a fixed number of ticks and validates
+/// that the simulation is working correctly. It outputs final statistics
+/// and validation results, similar to test mode.
+///
+/// # Arguments
+/// * `ticks` - Number of simulation ticks to run
+/// * `delta` - Time delta per tick in seconds
+/// * `seed` - Random seed for deterministic simulation
+fn run_headless(ticks: u32, delta: f32, seed: u64) {
+    println!("Running traffic simulation in headless mode...");
+    println!("Ticks: {}, Delta: {}s, Seed: {}", ticks, delta, seed);
+    println!();
+
+    let (validation_passed, total_deliveries, max_cars_observed, errors) =
+        run_simulation_validation(ticks, delta, seed);
+
+    // Print validation results
+    print_validation_results(
+        validation_passed,
+        total_deliveries,
+        max_cars_observed,
+        &errors,
+    );
+
+    if !validation_passed || !errors.is_empty() {
         std::process::exit(1);
     }
 }
@@ -355,84 +422,31 @@ fn run_simulation_test(
     println!("Ticks: {}, Delta: {}s, Seed: {}", ticks, delta, seed);
     println!();
 
-    let mut world = simulation::SimWorld::create_test_world_with_seed(seed);
+    let (validation_passed, total_deliveries, max_cars_observed, errors) =
+        run_simulation_validation(ticks, delta, seed);
 
-    // Track initial state for validation
-    let initial_houses = world.houses.len();
-    let initial_factories = world.factories.len();
-    let initial_shops = world.shops.len();
-    let initial_intersections = world.road_network.intersection_count();
-    let initial_roads = world.road_network.road_count();
+    // Print validation results (same as headless mode but with "TEST" prefix)
+    print_test_validation_results(
+        validation_passed,
+        total_deliveries,
+        max_cars_observed,
+        &errors,
+    );
 
-    let mut max_cars_observed = 0usize;
-    let mut errors: Vec<String> = Vec::new();
+    (validation_passed, total_deliveries, max_cars_observed, errors)
+}
 
-    // Run simulation without delays
-    for tick in 1..=ticks {
-        world.tick(delta);
-
-        // Track maximum concurrent cars
-        max_cars_observed = max_cars_observed.max(world.cars.len());
-
-        // Validate simulation state periodically
-        if tick % 100 == 0 {
-            // Check for structural integrity
-            if world.road_network.intersection_count() != initial_intersections {
-                errors.push(format!(
-                    "Tick {}: Intersection count changed from {} to {}",
-                    tick, initial_intersections,
-                    world.road_network.intersection_count()
-                ));
-            }
-            if world.road_network.road_count() != initial_roads {
-                errors.push(format!(
-                    "Tick {}: Road count changed from {} to {}",
-                    tick, initial_roads,
-                    world.road_network.road_count()
-                ));
-            }
-            if world.houses.len() != initial_houses {
-                errors.push(format!(
-                    "Tick {}: House count changed from {} to {}",
-                    tick, initial_houses,
-                    world.houses.len()
-                ));
-            }
-            if world.factories.len() != initial_factories {
-                errors.push(format!(
-                    "Tick {}: Factory count changed from {} to {}",
-                    tick, initial_factories,
-                    world.factories.len()
-                ));
-            }
-            if world.shops.len() != initial_shops {
-                errors.push(format!(
-                    "Tick {}: Shop count changed from {} to {}",
-                    tick, initial_shops,
-                    world.shops.len()
-                ));
-            }
-        }
-    }
-
-    // Calculate total deliveries
-    let total_deliveries: usize = world.shops.values().map(|s| s.cars_received).sum();
-
-    // Print test results
-    println!("=== TEST RESULTS ===");
-    println!("Simulation time: {:.2}s", world.time);
-    println!("Max concurrent cars: {}", max_cars_observed);
-    println!("Total deliveries to shops: {}", total_deliveries);
-    println!("Final car count: {}", world.cars.len());
-    println!();
-
-    // Validation checks
-    let mut validation_passed = true;
-
-    // Check: Cars should have spawned during simulation
+/// Print test validation results (similar to print_validation_results but for tests)
+#[cfg(test)]
+fn print_test_validation_results(
+    validation_passed: bool,
+    _total_deliveries: usize,
+    max_cars_observed: usize,
+    errors: &[String],
+) {
+    // Print success/failure for each check
     if max_cars_observed == 0 {
-        errors.push("FAIL: No cars were ever spawned during simulation".to_string());
-        validation_passed = false;
+        println!("FAIL: No cars were ever spawned during simulation");
     } else {
         println!(
             "PASS: Cars spawned successfully (max: {})",
@@ -440,32 +454,23 @@ fn run_simulation_test(
         );
     }
 
-    // Check: Road network should be intact
-    if world.road_network.intersection_count() == initial_intersections
-        && world.road_network.road_count() == initial_roads
-    {
-        println!("PASS: Road network integrity maintained");
+    if errors.iter().any(|e| e.contains("Road network")) {
+        println!("FAIL: Road network was unexpectedly modified");
     } else {
-        errors.push("FAIL: Road network was unexpectedly modified".to_string());
-        validation_passed = false;
+        println!("PASS: Road network integrity maintained");
     }
 
-    // Check: Buildings should be intact
-    if world.houses.len() == initial_houses
-        && world.factories.len() == initial_factories
-        && world.shops.len() == initial_shops
-    {
-        println!("PASS: Building integrity maintained");
+    if errors.iter().any(|e| e.contains("Building") || e.contains("House") || e.contains("Factory") || e.contains("Shop")) {
+        println!("FAIL: Buildings were unexpectedly modified");
     } else {
-        errors.push("FAIL: Buildings were unexpectedly modified".to_string());
-        validation_passed = false;
+        println!("PASS: Building integrity maintained");
     }
 
     // Print any errors
     if !errors.is_empty() {
         println!();
         println!("=== ERRORS ===");
-        for error in &errors {
+        for error in errors {
             println!("  {}", error);
         }
     }
@@ -476,8 +481,6 @@ fn run_simulation_test(
     } else {
         println!("TEST FAILED: {} error(s) detected", errors.len());
     }
-
-    (validation_passed, total_deliveries, max_cars_observed, errors)
 }
 
 #[cfg(test)]
