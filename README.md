@@ -29,20 +29,23 @@ Achieve **either** of these goals to win:
 ## 🏗️ Buildings
 
 ### Houses 🏠
-- Source of workers
-- Send cars to factories when labor is needed
-- Workers return home after their shift
+- Each house has **one car**
+- Cars go out to work at factories when available
+- When the car is out, the house shows as **busy (red indicator)**
+- Workers return home after completing their shift
+- Car becomes available again when returned home
 
 ### Factories 🏭
+- Each factory has **one truck**
 - Employ workers from houses
 - Produce goods when workers complete their shifts
-- Send delivery trucks to shops when products are ready
-- Can only accept workers when the truck is home (not out making deliveries)
+- Send delivery truck to shops when products are ready
+- When the truck is out, the factory shows as **busy (red indicator)** and cannot accept workers
+- Can only accept workers when the truck is home (green indicator)
 
 ### Shops 🏪
 - Receive deliveries from factories
-- Generate product demand over time
-- Each delivery reduces demand
+- Always ready to accept deliveries (green indicator)
 
 ## 🕹️ Controls
 
@@ -91,17 +94,26 @@ cargo test --no-default-features
 3. **Watch Your Budget**: Plan your builds carefully - going bankrupt means game over
 4. **Optimize Routes**: Strategic road placement can drastically improve delivery times
 5. **Start Small**: Build a few buildings first, earn money from deliveries, then expand
-6. **Factory Availability**: Factories can only accept new workers when their truck is home, so plan accordingly
+6. **One Vehicle Per Building**: Each house has one car, each factory has one truck - plan accordingly
+7. **Monitor Indicators**: Red spheres show busy buildings, green spheres show available buildings
 
 ## 🎯 Game Mechanics
 
 The simulation runs automatically once buildings are placed:
-- Houses automatically send workers to factories with high labor demand
+- Each house has one car that goes to work at available factories
 - Workers spend time at factories, then return home
-- Factories automatically dispatch trucks to shops with high product demand
+- Each factory has one truck that delivers to shops when products are ready
 - Trucks deliver goods and return to factories
 
-Monitor the **Global Demand** indicators to see where bottlenecks are forming!
+**Visual Indicators:**
+- **Green sphere on top**: Building is available (car/truck is home)
+- **Red sphere on top**: Building is busy (car/truck is out)
+- Shops always show green (passive receivers)
+
+Monitor the **Building Status** display to see:
+- How many factories are busy (trucks out)
+- How many houses are busy (cars out)
+- Total number of shops
 
 ## 🏆 Scoring
 
