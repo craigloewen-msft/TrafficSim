@@ -1220,10 +1220,10 @@ impl SimWorld {
 
     /// Calculate global demand metrics
     ///
-    /// Returns metrics showing how many buildings have unmet demand:
+    /// Returns metrics showing building busy states:
     /// - Factories waiting: factories that can't accept workers (truck is out)
-    /// - Shops waiting: shops that haven't received deliveries yet
-    /// - Houses waiting: houses with cars currently out
+    /// - Shops waiting: always 0 (shops are passive receivers)
+    /// - Houses waiting: houses with cars currently out (busy)
     pub fn calculate_global_demand(&self) -> GlobalDemand {
         let total_factories = self.factories.len();
         let total_shops = self.shops.len();
