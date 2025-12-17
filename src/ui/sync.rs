@@ -172,7 +172,7 @@ pub fn update_factory_delivery_indicators(
             // Iterate over delivery indicator children (query filters for DeliveryIndicator component)
             let mut indicator_index = 0;
             for child in children.iter() {
-                if let Ok(mut material_handle) = indicator_query.get_mut(*child) {
+                if let Ok(mut material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
                         // Light up indicators based on deliveries_ready count
                         if indicator_index < factory.deliveries_ready as usize {

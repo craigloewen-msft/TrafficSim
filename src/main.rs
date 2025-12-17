@@ -355,10 +355,9 @@ mod tests {
         );
     }
 
-    /// Tests that factories correctly implement the new delivery logic:
-    /// 1. Factories should not accept workers when truck is out
-    /// 2. Factories can store max 2 deliveries
-    /// 3. Workers rejected when factory is full (2 deliveries stored)
+    /// Tests that factories correctly implement the simplified delivery logic:
+    /// 1. Factories accept workers only when truck is home (not out making deliveries)
+    /// 2. Deliveries count no longer affects worker acceptance
     #[test]
     fn test_factory_delivery_logic() {
         use simulation::SimWorld;
@@ -387,13 +386,13 @@ mod tests {
             factory.deliveries_ready = 2;
         }
         
-        // Verify factory is now full
+        // Verify factory still accepts workers when truck is home (deliveries count doesn't matter)
         {
             let factory = world.factories.get(&factory_id).unwrap();
             assert_eq!(factory.deliveries_ready, 2, "Factory should have 2 deliveries ready");
             
-            // Try to reserve a worker - should fail because factory is full
-            assert!(!factory.can_accept_workers(), "Factory should not accept workers when full (2/2 deliveries)");
+            // With simplified logic, factory SHOULD accept workers even when full, as long as truck is home
+            assert!(factory.can_accept_workers(), "Factory should accept workers when truck is home (even with 2/2 deliveries)");
         }
         
         // Take a delivery (simulate truck dispatch)
@@ -404,10 +403,10 @@ mod tests {
             assert_eq!(factory.deliveries_ready, 1, "Should have 1 delivery remaining");
         }
         
-        // Now factory should be able to accept workers again (has space for more deliveries)
+        // Factory should still be able to accept workers (truck still home)
         {
             let factory = world.factories.get(&factory_id).unwrap();
-            assert!(factory.can_accept_workers(), "Factory should accept workers when not full (1/2 deliveries)");
+            assert!(factory.can_accept_workers(), "Factory should accept workers when truck is home");
         }
         
         // Simulate truck being out

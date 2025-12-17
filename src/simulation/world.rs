@@ -11,9 +11,8 @@ use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
 
-use super::building::{
-    SimFactory, SimHouse, SimShop, LABOR_DEMAND_THRESHOLD, PRODUCT_DEMAND_THRESHOLD,
-};
+use super::building::{SimFactory, SimHouse, SimShop, PRODUCT_DEMAND_THRESHOLD};
+use super::factory::LABOR_DEMAND_THRESHOLD;
 use super::car::{CarUpdateResult, SimCar};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
@@ -545,10 +544,10 @@ impl SimWorld {
             .get_intersection_position(from_intersection)
             .context("Start intersection position not found")?;
 
-        // Generate random speed (trucks slightly slower)
+        // Generate random speed (trucks are faster)
         let speed = match vehicle_type {
             VehicleType::Car => self.random_range(2.0..6.0),
-            VehicleType::Truck => self.random_range(1.5..4.0),
+            VehicleType::Truck => self.random_range(4.0..8.0),
         };
 
         let id = CarId(self.next_sim_id());
