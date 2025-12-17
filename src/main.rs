@@ -32,7 +32,9 @@ struct Cli {
 }
 
 fn main() {
-    if std::env::args().any(|arg| arg == "--ui") {
+    let cli = Cli::parse();
+    
+    if cli.ui {
         #[cfg(feature = "ui")]
         {
             run_with_ui();
@@ -43,8 +45,6 @@ fn main() {
             std::process::exit(1);
         }
     } else {
-        let cli = Cli::parse();
-        
         println!("===========================================");
         println!("  Traffic Sim - Test Mode");
         println!("===========================================");

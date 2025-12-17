@@ -6,7 +6,10 @@ use super::components::{
     CarLink, DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced,
     SimWorldResource,
 };
-use crate::{simulation::{CarId, VehicleType}, ui::components::GlobalDemandText};
+use crate::{
+    simulation::{CarId, VehicleType, GOAL_DELIVERIES, GOAL_MONEY},
+    ui::components::GlobalDemandText,
+};
 
 /// System to run simulation tick
 pub fn tick_simulation(time: Res<Time>, mut sim_world: ResMut<SimWorldResource>) {
@@ -168,7 +171,6 @@ pub fn update_global_demand_text(
                 }
             }
             GlobalDemandText::ShopDeliveries => {
-                use crate::simulation::GOAL_DELIVERIES;
                 if let Some(game_state) = &sim_world.0.game_state {
                     **text = format!(
                         "Shop Deliveries: {} / {}",
@@ -179,7 +181,6 @@ pub fn update_global_demand_text(
                 }
             }
             GlobalDemandText::GoalStatus => {
-                use crate::simulation::{GOAL_DELIVERIES, GOAL_MONEY};
                 if let Some(game_state) = &sim_world.0.game_state {
                     if game_state.is_won {
                         **text = "🎉 YOU WIN! Goal Complete! 🎉".to_string();
