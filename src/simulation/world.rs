@@ -9,6 +9,7 @@ use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::Rng;
 use rand::SeedableRng;
+use log::warn;
 use std::collections::HashMap;
 
 use super::building::{SimFactory, SimHouse, SimShop};
@@ -848,7 +849,7 @@ impl SimWorld {
                 VehicleType::Car,
                 TripType::Return,
                 Some(house_id),
-                None,
+                Some(factory_id),
             );
         }
 
@@ -908,13 +909,15 @@ impl SimWorld {
                             (VehicleType::Car, TripType::Outbound) => {
                                 // Worker arrived at factory - try to register them with their house_id
                                 let mut worker_accepted = false;
+                                let mut destination_factory: Option<FactoryId> = None;
                                 if let Some(house_id) = origin_house {
-                                    if let Some(factory) = self
+                                    if let Some((factory_id, factory)) = self
                                         .factories
-                                        .values_mut()
-                                        .find(|f| f.intersection_id == dest)
+                                        .iter_mut()
+                                        .find(|(_, f)| f.intersection_id == dest)
                                     {
                                         worker_accepted = factory.receive_worker(house_id);
+                                        destination_factory = Some(*factory_id);
                                     }
                                 }
                                 
@@ -934,7 +937,7 @@ impl SimWorld {
                                                 VehicleType::Car,
                                                 TripType::Return,
                                                 Some(house_id),
-                                                None,
+                                                destination_factory,
                                             );
                                         }
                                     }
@@ -944,6 +947,46 @@ impl SimWorld {
                                 }
                             }
                             (VehicleType::Car, TripType::Return) => {
+                                let commute_distance = match (origin_house, origin_factory) {
+                                    (Some(house_id), Some(factory_id)) => {
+                                        let house_position = self
+                                            .houses
+                                            .get(&house_id)
+                                            .and_then(|house| {
+                                                self.road_network.get_intersection_position(
+                                                    house.intersection_id,
+                                                )
+                                            })
+                                            .copied();
+                                        let factory_position = self
+                                            .factories
+                                            .get(&factory_id)
+                                            .and_then(|factory| {
+                                                self.road_network.get_intersection_position(
+                                                    factory.intersection_id,
+                                                )
+                                            })
+                                            .copied();
+
+                                        match (house_position, factory_position) {
+                                            (Some(house_pos), Some(factory_pos)) => {
+                                                house_pos.distance(&factory_pos)
+                                            }
+                                            _ => {
+                                                warn!(
+                                                    "Missing house or factory position for worker commute; defaulting to a zero-distance commute, which applies the maximum commute penalty"
+                                                );
+                                                0.0
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        warn!(
+                                            "Missing worker identifiers for commute penalty; defaulting to a zero-distance commute, which applies the maximum commute penalty"
+                                        );
+                                        0.0
+                                    }
+                                };
                                 // Worker returned home - clear car reference and despawn
                                 if let Some(house_id) = origin_house {
                                     if let Some(house) = self.houses.get_mut(&house_id) {
@@ -952,7 +995,7 @@ impl SimWorld {
                                 }
                                 // Track worker trip completion in game state
                                 if let Some(game_state) = &mut self.game_state {
-                                    game_state.complete_worker_trip();
+                                    game_state.complete_worker_trip(commute_distance);
                                 }
                                 self.road_network.remove_car_from_tracking(car_id);
                                 self.cars.remove(&car_id);
