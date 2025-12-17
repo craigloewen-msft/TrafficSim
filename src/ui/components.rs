@@ -145,11 +145,11 @@ pub struct BuildModeButton(pub BuildingMode);
 /// Marker for global demand UI text elements
 #[derive(Component)]
 pub enum GlobalDemandText {
-    /// Factories waiting for workers
+    /// Factories with trucks out (busy)
     FactoriesWaiting,
-    /// Shops waiting for products
+    /// Shops (always passive)
     ShopsWaiting,
-    /// Houses waiting (with available cars but no demand)
+    /// Houses with cars out (busy)
     HousesWaiting,
     /// Player's money
     Money,

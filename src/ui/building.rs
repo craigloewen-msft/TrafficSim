@@ -92,7 +92,7 @@ pub fn setup_building_ui(mut commands: Commands) {
         .with_children(|parent| {
             // Global Demand label
             parent.spawn((
-                Text::new("Global Demand:"),
+                Text::new("Building Status:"),
                 TextFont {
                     font_size: 16.0,
                     ..default()
@@ -100,27 +100,27 @@ pub fn setup_building_ui(mut commands: Commands) {
                 TextColor(Color::WHITE),
             ));
 
-            // Factories waiting
+            // Factories with trucks out
             spawn_demand_text(
                 parent,
                 GlobalDemandText::FactoriesWaiting,
-                "Factories: 0/0",
+                "Factories Busy: 0/0",
                 Color::srgb(0.5, 0.5, 0.7),
             );
 
-            // Shops waiting
+            // Shops (passive receivers)
             spawn_demand_text(
                 parent,
                 GlobalDemandText::ShopsWaiting,
-                "Shops: 0/0",
+                "Shops: 0",
                 Color::srgb(0.8, 0.4, 0.6),
             );
 
-            // Houses waiting
+            // Houses with cars out
             spawn_demand_text(
                 parent,
                 GlobalDemandText::HousesWaiting,
-                "Houses: 0/0",
+                "Houses Busy: 0/0",
                 Color::srgb(0.7, 0.6, 0.4),
             );
         });
