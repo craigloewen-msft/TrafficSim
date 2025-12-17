@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::components::{
-    CarLink, DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, ShopLink, SimSynced,
+    CarLink, DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, HouseLink, ShopLink, SimSynced,
     SimWorldResource,
 };
 use crate::{
@@ -82,21 +82,41 @@ pub fn update_factory_indicators(
     mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
-
     for (link, children) in factory_query.iter() {
         if let Some(factory) = sim_world.0.factories.get(&link.0) {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        let demand_ratio =
-                            (factory.labor_demand / (LABOR_DEMAND_THRESHOLD * 2.0)).min(1.0);
-                        if demand_ratio < 0.5 {
-                            let t = demand_ratio * 2.0;
-                            material.base_color = Color::srgb(t, 1.0, 0.0);
+                        // Red if truck is out (busy), green if truck is home (available)
+                        if factory.truck.is_some() {
+                            material.base_color = Color::srgb(1.0, 0.0, 0.0); // Red - busy
                         } else {
-                            let t = (demand_ratio - 0.5) * 2.0;
-                            material.base_color = Color::srgb(1.0, 1.0 - t, 0.0);
+                            material.base_color = Color::srgb(0.0, 1.0, 0.0); // Green - available
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// System to update house demand indicators
+pub fn update_house_indicators(
+    sim_world: Res<SimWorldResource>,
+    house_query: Query<(&HouseLink, &Children)>,
+    mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for (link, children) in house_query.iter() {
+        if let Some(house) = sim_world.0.houses.get(&link.0) {
+            for child in children.iter() {
+                if let Ok(material_handle) = indicator_query.get_mut(child) {
+                    if let Some(material) = materials.get_mut(&material_handle.0) {
+                        // Red if car is out (busy), green if car is home (available)
+                        if house.car.is_some() {
+                            material.base_color = Color::srgb(1.0, 0.0, 0.0); // Red - busy
+                        } else {
+                            material.base_color = Color::srgb(0.0, 1.0, 0.0); // Green - available
                         }
                     }
                 }
@@ -112,22 +132,13 @@ pub fn update_shop_indicators(
     mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    const PRODUCT_DEMAND_THRESHOLD: f32 = 10.0;
-
+    // Shops are passive - just show green always (they just receive deliveries)
     for (link, children) in shop_query.iter() {
-        if let Some(shop) = sim_world.0.shops.get(&link.0) {
+        if sim_world.0.shops.get(&link.0).is_some() {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        let demand_ratio =
-                            (shop.product_demand / (PRODUCT_DEMAND_THRESHOLD * 2.0)).min(1.0);
-                        if demand_ratio < 0.5 {
-                            let t = demand_ratio * 2.0;
-                            material.base_color = Color::srgb(t, 1.0, 0.0);
-                        } else {
-                            let t = (demand_ratio - 0.5) * 2.0;
-                            material.base_color = Color::srgb(1.0, 1.0 - t, 0.0);
-                        }
+                        material.base_color = Color::srgb(0.0, 1.0, 0.0); // Green - always ready
                     }
                 }
             }
@@ -146,15 +157,18 @@ pub fn update_global_demand_text(
         match demand_type {
             GlobalDemandText::FactoriesWaiting => {
                 **text = format!(
-                    "Factories: {}/{}",
+                    "Factories Busy: {}/{}",
                     demand.factories_waiting, demand.total_factories
                 );
             }
             GlobalDemandText::ShopsWaiting => {
-                **text = format!("Shops: {}/{}", demand.shops_waiting, demand.total_shops);
+                **text = format!("Shops: {}", demand.total_shops);
             }
             GlobalDemandText::HousesWaiting => {
-                **text = format!("Houses: {}/{}", demand.houses_waiting, demand.total_houses);
+                **text = format!(
+                    "Houses Busy: {}/{}",
+                    demand.houses_waiting, demand.total_houses
+                );
             }
             GlobalDemandText::Money => {
                 if let Some(game_state) = &sim_world.0.game_state {

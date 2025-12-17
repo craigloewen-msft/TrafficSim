@@ -4,11 +4,6 @@
 
 use super::types::{CarId, FactoryId, HouseId, IntersectionId, ShopId};
 
-/// Threshold at which shops want products
-pub const PRODUCT_DEMAND_THRESHOLD: f32 = 10.0;
-/// Amount of demand satisfied per product delivery
-pub const PRODUCT_DEMAND_PER_DELIVERY: f32 = 10.0;
-
 /// A house in the simulation
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
@@ -36,10 +31,6 @@ pub struct SimFactory {
     pub intersection_id: IntersectionId,
     /// Workers currently at the factory (house_id, time_remaining until work done)
     pub workers: Vec<(HouseId, f32)>,
-    /// Current labor demand
-    pub labor_demand: f32,
-    /// Rate at which labor demand increases per second
-    pub labor_demand_rate: f32,
     /// Number of deliveries ready to be sent (max 2)
     pub deliveries_ready: u32,
     /// Maximum number of deliveries that can be stored
@@ -54,8 +45,6 @@ impl SimFactory {
             id,
             intersection_id,
             workers: Vec::new(),
-            labor_demand: 10.0,
-            labor_demand_rate: 1.0,
             deliveries_ready: 0,
             max_deliveries: 2,
             truck: None,
@@ -70,10 +59,6 @@ pub struct SimShop {
     pub intersection_id: IntersectionId,
     /// Number of deliveries received
     pub cars_received: usize,
-    /// Current product demand
-    pub product_demand: f32,
-    /// Rate at which product demand increases per second
-    pub product_demand_rate: f32,
 }
 
 impl SimShop {
@@ -82,19 +67,11 @@ impl SimShop {
             id,
             intersection_id,
             cars_received: 0,
-            product_demand: 10.0,
-            product_demand_rate: 1.0,
         }
     }
 
     /// Receive a delivery
     pub fn receive_delivery(&mut self) {
         self.cars_received += 1;
-        self.product_demand = (self.product_demand - PRODUCT_DEMAND_PER_DELIVERY).max(0.0);
-    }
-
-    /// Update the shop logic
-    pub fn update(&mut self, delta_secs: f32) {
-        self.product_demand += self.product_demand_rate * delta_secs;
     }
 }

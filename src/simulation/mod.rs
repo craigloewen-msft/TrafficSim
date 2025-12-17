@@ -20,7 +20,7 @@ pub use building::{SimFactory, SimHouse, SimShop};
 #[allow(unused_imports)]
 pub use car::{CarUpdateResult, SimCar};
 #[allow(unused_imports)]
-pub use factory::{FACTORY_WORK_TIME, LABOR_DEMAND_PER_WORKER, LABOR_DEMAND_THRESHOLD};
+pub use factory::{FACTORY_WORK_TIME};
 #[allow(unused_imports)]
 pub use game_state::{
     GameState, COST_FACTORY, COST_HOUSE, COST_ROAD, COST_SHOP, GOAL_DELIVERIES, GOAL_MONEY,

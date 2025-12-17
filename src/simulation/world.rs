@@ -11,8 +11,7 @@ use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
 
-use super::building::{SimFactory, SimHouse, SimShop, PRODUCT_DEMAND_THRESHOLD};
-use super::factory::LABOR_DEMAND_THRESHOLD;
+use super::building::{SimFactory, SimHouse, SimShop};
 use super::car::{CarUpdateResult, SimCar};
 use super::game_state::GameState;
 use super::intersection::SimIntersection;
@@ -24,19 +23,19 @@ use super::types::{
 
 /// Global demand metrics for the simulation
 ///
-/// Tracks how many buildings have unmet demand - i.e., they need resources
-/// but there isn't enough supply to meet their needs.
+/// Tracks building busy states - i.e., which buildings currently have their
+/// vehicle out on the road.
 #[derive(Debug, Clone, Default)]
 pub struct GlobalDemand {
-    /// Number of factories waiting for workers but no houses have available cars
+    /// Number of factories with trucks out (busy making deliveries)
     pub factories_waiting: usize,
     /// Total number of factories
     pub total_factories: usize,
-    /// Number of shops waiting for products but no factories have inventory
+    /// Number of shops (always 0 - shops are passive)
     pub shops_waiting: usize,
     /// Total number of shops
     pub total_shops: usize,
-    /// Number of houses with available cars but no factories need workers
+    /// Number of houses with cars out (busy)
     pub houses_waiting: usize,
     /// Total number of houses
     pub total_houses: usize,
@@ -718,10 +717,8 @@ impl SimWorld {
     }
 
     /// Update all shops
-    fn update_shops(&mut self, delta_secs: f32) {
-        for shop in self.shops.values_mut() {
-            shop.update(delta_secs);
-        }
+    fn update_shops(&mut self, _delta_secs: f32) {
+        // Shops no longer have demand that increases over time
     }
 
     /// Update all factories
@@ -733,11 +730,10 @@ impl SimWorld {
         let mut workers_done = Vec::new();
         let mut trucks_to_dispatch = Vec::new();
 
-        // Get shops needing products
-        let shops_needing_products: Vec<IntersectionId> = self
+        // Get all shops - trucks always dispatch if deliveries are ready
+        let shop_intersections: Vec<IntersectionId> = self
             .shops
             .values()
-            .filter(|s| s.product_demand >= PRODUCT_DEMAND_THRESHOLD)
             .map(|s| s.intersection_id)
             .collect();
 
@@ -758,16 +754,16 @@ impl SimWorld {
                 workers_done.push((factory_id, house_id));
             }
 
-            // If truck is available and there are deliveries ready and shops need products
+            // If truck is available and there are deliveries ready and shops exist
             if factory.truck_available()
                 && factory.deliveries_ready > 0
-                && !shops_needing_products.is_empty()
+                && !shop_intersections.is_empty()
             {
                 // Take a delivery for dispatch
                 if factory.take_delivery() {
-                    // Pick a random shop that needs products (use index based on factory id for determinism)
-                    let shop_index = factory_id.0 .0 % shops_needing_products.len();
-                    let shop_intersection = shops_needing_products[shop_index];
+                    // Pick a random shop (use index based on factory id for determinism)
+                    let shop_index = factory_id.0 .0 % shop_intersections.len();
+                    let shop_intersection = shop_intersections[shop_index];
                     trucks_to_dispatch.push((factory_id, shop_intersection));
                 }
             }
@@ -778,15 +774,15 @@ impl SimWorld {
 
     /// Spawn workers from houses to factories
     fn spawn_workers(&mut self) {
-        // Get factories with high labor demand that can accept workers
-        let factories_with_demand: Vec<(FactoryId, IntersectionId)> = self
+        // Get all factories that can accept workers (truck is home)
+        let factories_accepting: Vec<(FactoryId, IntersectionId)> = self
             .factories
             .values()
-            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD && f.can_accept_workers())
+            .filter(|f| f.can_accept_workers())
             .map(|f| (f.id, f.intersection_id))
             .collect();
 
-        if factories_with_demand.is_empty() {
+        if factories_accepting.is_empty() {
             return;
         }
 
@@ -805,20 +801,11 @@ impl SimWorld {
             }
 
             // Choose random factory
-            let (factory_id, factory_intersection) =
-                match self.choose_random(&factories_with_demand) {
+            let (_factory_id, factory_intersection) =
+                match self.choose_random(&factories_accepting) {
                     Some(&(fid, fi)) => (fid, fi),
                     None => continue,
                 };
-
-            // Try to reserve at factory
-            if let Some(factory) = self.factories.get_mut(&factory_id) {
-                if !factory.try_reserve_worker() {
-                    continue;
-                }
-            } else {
-                continue;
-            }
 
             let house_intersection = self.houses.get(&house_id).map(|h| h.intersection_id);
             let house_intersection = match house_intersection {
@@ -1177,9 +1164,8 @@ impl SimWorld {
         println!("--- Factories ---");
         for factory in self.factories.values() {
             println!(
-                "  Factory {:?}: demand={:.1}, deliveries={}/{}, workers={}, truck={}",
+                "  Factory {:?}: deliveries={}/{}, workers={}, truck={}",
                 factory.id.0,
-                factory.labor_demand,
                 factory.deliveries_ready,
                 factory.max_deliveries,
                 factory.workers.len(),
@@ -1195,8 +1181,8 @@ impl SimWorld {
         println!("--- Shops ---");
         for shop in self.shops.values() {
             println!(
-                "  Shop {:?}: demand={:.1}, deliveries={}",
-                shop.id.0, shop.product_demand, shop.cars_received
+                "  Shop {:?}: deliveries={}",
+                shop.id.0, shop.cars_received
             );
         }
 
@@ -1235,56 +1221,33 @@ impl SimWorld {
     /// Calculate global demand metrics
     ///
     /// Returns metrics showing how many buildings have unmet demand:
-    /// - Factories waiting: factories that need workers but no houses have available cars
-    /// - Shops waiting: shops that need products but no factories have deliveries ready
-    /// - Houses waiting: houses with available cars but no factories need workers
+    /// - Factories waiting: factories that can't accept workers (truck is out)
+    /// - Shops waiting: shops that haven't received deliveries yet
+    /// - Houses waiting: houses with cars currently out
     pub fn calculate_global_demand(&self) -> GlobalDemand {
         let total_factories = self.factories.len();
         let total_shops = self.shops.len();
         let total_houses = self.houses.len();
 
-        // Count factories that need workers (labor_demand >= threshold)
-        let factories_needing_workers: usize = self
+        // Count factories that can accept workers (truck is home)
+        let factories_accepting: usize = self
             .factories
             .values()
-            .filter(|f| f.labor_demand >= LABOR_DEMAND_THRESHOLD)
+            .filter(|f| f.can_accept_workers())
             .count();
 
-        // Count houses with available cars (car is None)
-        let houses_with_available_cars: usize =
-            self.houses.values().filter(|h| h.car.is_none()).count();
+        // Count houses with cars out (busy)
+        let houses_busy: usize =
+            self.houses.values().filter(|h| h.car.is_some()).count();
 
-        // Count shops that need products (product_demand >= threshold)
-        let shops_needing_products: usize = self
-            .shops
-            .values()
-            .filter(|s| s.product_demand >= PRODUCT_DEMAND_THRESHOLD)
-            .count();
+        // Simplified: factories waiting are those that can't accept workers (truck is out)
+        let factories_waiting = total_factories - factories_accepting;
 
-        // Count factories with deliveries ready
-        let factories_with_deliveries: usize =
-            self.factories.values().filter(|f| f.deliveries_ready > 0).count();
+        // Simplified: shops always wait if they exist (no demand threshold)
+        let shops_waiting = 0; // Shops are passive - they just receive deliveries
 
-        // Factories waiting: need workers but no available supply (no houses with cars)
-        let factories_waiting = if houses_with_available_cars == 0 {
-            factories_needing_workers
-        } else {
-            0
-        };
-
-        // Shops waiting: need products but no supply (no factories with deliveries ready)
-        let shops_waiting = if factories_with_deliveries == 0 {
-            shops_needing_products
-        } else {
-            0
-        };
-
-        // Houses waiting: have cars but no demand (no factories need workers)
-        let houses_waiting = if factories_needing_workers == 0 {
-            houses_with_available_cars
-        } else {
-            0
-        };
+        // Houses waiting are those with cars out (busy)
+        let houses_waiting = houses_busy;
 
         GlobalDemand {
             factories_waiting,

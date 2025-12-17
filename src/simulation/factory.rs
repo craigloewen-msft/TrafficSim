@@ -8,10 +8,6 @@ use super::types::HouseId;
 
 /// Duration in seconds that a worker spends at the factory before returning home
 pub const FACTORY_WORK_TIME: f32 = 5.0;
-/// Threshold at which factories need workers
-pub const LABOR_DEMAND_THRESHOLD: f32 = 10.0;
-/// Amount of demand reduced when a worker arrives
-pub const LABOR_DEMAND_PER_WORKER: f32 = 10.0;
 
 impl SimFactory {
     /// Check if the factory can accept workers
@@ -26,31 +22,13 @@ impl SimFactory {
         if !self.can_accept_workers() {
             return false;
         }
-        self.labor_demand = (self.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
         self.workers.push((house_id, FACTORY_WORK_TIME));
         true
-    }
-
-    /// Try to reserve a worker slot. Returns true if accepted.
-    /// Only accepts workers if truck is available (not out making deliveries)
-    pub fn try_reserve_worker(&mut self) -> bool {
-        if !self.can_accept_workers() {
-            return false;
-        }
-        if self.labor_demand >= LABOR_DEMAND_THRESHOLD {
-            self.labor_demand = (self.labor_demand - LABOR_DEMAND_PER_WORKER).max(0.0);
-            true
-        } else {
-            false
-        }
     }
 
     /// Update the factory logic
     /// Returns list of house_ids for workers whose work is done (they should return home)
     pub fn update(&mut self, delta_secs: f32) -> Vec<HouseId> {
-        // Increase labor demand over time
-        self.labor_demand += self.labor_demand_rate * delta_secs;
-
         // Update worker times and find those done working
         let mut workers_done = Vec::new();
         self.workers.retain_mut(|(house_id, time_remaining)| {
