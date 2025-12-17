@@ -12,17 +12,17 @@ use clap::Parser;
 
 #[derive(Parser)]
 #[command(name = "traffic_sim")]
-#[command(about = "Traffic simulation with optional UI")]
+#[command(about = "Traffic management game - Build roads and manage deliveries!")]
 struct Cli {
-    /// Run with the Bevy game engine UI
+    /// Run with the Bevy game engine UI to play the game
     #[arg(long)]
     ui: bool,
 
-    /// Number of simulation ticks to run in headless mode
-    #[arg(long, default_value = "9000")]
+    /// Number of simulation ticks to run in test/headless mode
+    #[arg(long, default_value = "100")]
     ticks: u32,
 
-    /// Time delta per tick in seconds
+    /// Time delta per tick in seconds (test mode)
     #[arg(long, default_value = "0.1")]
     delta: f32,
 
@@ -32,9 +32,7 @@ struct Cli {
 }
 
 fn main() {
-    let cli = Cli::parse();
-
-    if cli.ui {
+    if std::env::args().any(|arg| arg == "--ui") {
         #[cfg(feature = "ui")]
         {
             run_with_ui();
@@ -45,6 +43,16 @@ fn main() {
             std::process::exit(1);
         }
     } else {
+        let cli = Cli::parse();
+        
+        println!("===========================================");
+        println!("  Traffic Sim - Test Mode");
+        println!("===========================================");
+        println!("To play the game, run with: cargo run --ui");
+        println!("(Note: Requires UI feature enabled)");
+        println!("===========================================");
+        println!();
+        
         run_headless(cli.ticks, cli.delta);
     }
 }
@@ -111,32 +119,46 @@ fn run_headless(ticks: u32, delta: f32) {
 #[cfg(feature = "ui")]
 /// Run the simulation with the Bevy game engine UI
 ///
-/// This mode provides a visual interface for the simulation with:
-/// - 3D rendering of roads, buildings, and cars
-/// - Camera controls for navigation
-/// - Interactive building placement
-/// - Real-time visualization of traffic flow
+/// This mode provides a visual interface for the traffic management game:
+/// - Build roads and buildings to create delivery networks
+/// - Earn money from successful deliveries
+/// - Reach the goal to win the game!
 fn run_with_ui() {
     use bevy::log::LogPlugin;
     use bevy::prelude::*;
 
-    println!("Starting Traffic Sim UI...");
+    println!("===========================================");
+    println!("  Traffic Management Game");
+    println!("===========================================");
     println!();
-    println!("Camera Controls:");
-    println!("  W/A/S/D     - Move camera");
-    println!("  Q/E         - Rotate camera around center");
-    println!("  Z/X         - Zoom in/out");
-    println!("  Click+Drag  - Orbital rotation");
-    println!("  ESC         - Exit");
+    println!("🎮 OBJECTIVE:");
+    println!("  Complete 50 shop deliveries OR earn $5000");
     println!();
-    println!("Building Controls:");
-    println!("  1           - Road mode (click two points to create a road)");
-    println!("  2           - House mode (click to place)");
-    println!("  3           - Factory mode (click to place)");
-    println!("  4           - Shop mode (click to place)");
-    println!("  Click buttons at bottom of screen to toggle modes");
+    println!("💰 ECONOMICS:");
+    println!("  Starting Budget: $2000");
+    println!("  Road: $50 | House: $200 | Factory: $500 | Shop: $300");
+    println!("  Earn $10 per worker trip, $50 per shop delivery");
     println!();
-    println!("Building snaps to nearby intersections and roads.");
+    println!("🕹️ CONTROLS:");
+    println!("  Camera:");
+    println!("    W/A/S/D     - Move camera");
+    println!("    Q/E         - Rotate camera around center");
+    println!("    Z/X         - Zoom in/out");
+    println!("    Click+Drag  - Orbital rotation");
+    println!("    ESC         - Exit");
+    println!();
+    println!("  Building:");
+    println!("    1 or Button - Road mode (click two points)");
+    println!("    2 or Button - House mode (click to place)");
+    println!("    3 or Button - Factory mode (click to place)");
+    println!("    4 or Button - Shop mode (click to place)");
+    println!();
+    println!("💡 TIPS:");
+    println!("  • Houses send workers to factories");
+    println!("  • Factories produce goods and send trucks to shops");
+    println!("  • Shorter routes = faster deliveries = more money!");
+    println!("  • Watch your budget - you can't build if bankrupt");
+    println!("===========================================");
     println!();
 
     App::new()
@@ -149,7 +171,7 @@ fn run_with_ui() {
                 })
                 .set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: "Traffic Sim - Bevy Game".into(),
+                        title: "Traffic Management Game".into(),
                         resolution: (1280, 720).into(),
                         ..default()
                     }),
