@@ -58,7 +58,7 @@ fn main() {
         println!();
         
         if cli.cli_display {
-            run_headless_with_display(cli.ticks, cli.delta);
+            run_headless_with_display(cli.ticks, cli.delta, cli.seed);
         } else {
             run_headless(cli.ticks, cli.delta, cli.seed);
         }
@@ -243,7 +243,6 @@ fn print_validation_results_with_mode(
 ///
 /// # Arguments
 /// * `validation_passed` - Whether all validation checks passed
-/// * `total_deliveries` - Total number of deliveries completed (unused but kept for compatibility)
 /// * `max_cars_observed` - Maximum number of concurrent cars
 /// * `errors` - List of error messages
 fn print_validation_results(
@@ -295,9 +294,10 @@ fn run_headless(ticks: u32, delta: f32, seed: u64) {
 /// # Arguments
 /// * `ticks` - Number of simulation ticks to run
 /// * `delta` - Time delta per tick in seconds
-fn run_headless_with_display(ticks: u32, delta: f32) {
+/// * `seed` - Random seed for deterministic simulation
+fn run_headless_with_display(ticks: u32, delta: f32, seed: u64) {
     println!("Running traffic simulation in headless mode with CLI display...");
-    println!("Ticks: {}, Delta: {}s", ticks, delta);
+    println!("Ticks: {}, Delta: {}s, Seed: {}", ticks, delta, seed);
 
     // Calculate how many ticks equal 1 second of simulation time
     let ticks_per_second = (1.0 / delta).ceil() as u32;
@@ -307,7 +307,7 @@ fn run_headless_with_display(ticks: u32, delta: f32) {
     );
     println!();
 
-    let mut world = simulation::SimWorld::create_test_world();
+    let mut world = simulation::SimWorld::create_test_world_with_seed(seed);
 
     println!("Initial state:");
     world.print_summary();
