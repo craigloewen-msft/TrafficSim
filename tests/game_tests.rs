@@ -4,7 +4,7 @@
 
 use traffic_sim::simulation::{
     GameState, SimWorld, COST_HOUSE, COST_ROAD, GOAL_DELIVERIES, GOAL_MONEY,
-    REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY, STARTING_BUDGET,
+    Position, REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY, STARTING_BUDGET,
 };
 
 #[test]
@@ -68,7 +68,7 @@ fn test_game_world_building_costs() {
     let mut world = SimWorld::new_with_game();
 
     // Create an intersection to place a house on
-    let pos = traffic_sim::simulation::Position::new(0.0, 0.0, 0.0);
+    let pos = Position::new(0.0, 0.0, 0.0);
     let intersection_id = world.add_intersection(pos);
 
     let initial_money = world.game_state.as_ref().unwrap().money;
@@ -80,6 +80,25 @@ fn test_game_world_building_costs() {
         world.game_state.as_ref().unwrap().money,
         initial_money - COST_HOUSE
     );
+}
+
+#[test]
+fn test_game_world_building_costs_block_when_broke() {
+    let mut world = SimWorld::new_with_game();
+    if let Some(game_state) = world.game_state.as_mut() {
+        game_state.money = 10;
+    }
+
+    let first = Position::new(0.0, 0.0, 0.0);
+    let second = Position::new(10.0, 0.0, 0.0);
+    let start = world.add_intersection(first);
+    let end = world.add_intersection(second);
+
+    assert!(world.try_add_house(start).is_none());
+    assert!(world
+        .try_add_two_way_road(start, end)
+        .expect("road creation should not error")
+        .is_none());
 }
 
 #[test]
