@@ -8,7 +8,7 @@ use ordered_float::OrderedFloat;
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, TripType, VehicleType, CAR_LENGTH,
+    CarId, FactoryId, ApartmentId, IntersectionId, Position, RoadId, TripType, VehicleType, CAR_LENGTH,
     INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
 };
 
@@ -36,8 +36,8 @@ pub struct SimCar {
     pub vehicle_type: VehicleType,
     /// Type of trip (Outbound to destination, or Return to origin)
     pub trip_type: TripType,
-    /// The house this car belongs to (for cars)
-    pub origin_house: Option<HouseId>,
+    /// The apartment this car belongs to (for cars)
+    pub origin_apartment: Option<ApartmentId>,
     /// The factory this truck belongs to (for trucks)
     pub origin_factory: Option<FactoryId>,
 }
@@ -54,7 +54,7 @@ impl SimCar {
         angle: f32,
         vehicle_type: VehicleType,
         trip_type: TripType,
-        origin_house: Option<HouseId>,
+        origin_apartment: Option<ApartmentId>,
         origin_factory: Option<FactoryId>,
     ) -> Self {
         Self {
@@ -68,7 +68,7 @@ impl SimCar {
             angle,
             vehicle_type,
             trip_type,
-            origin_house,
+            origin_apartment,
             origin_factory,
         }
     }

@@ -37,9 +37,9 @@ pub struct RoadId(pub SimId);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CarId(pub SimId);
 
-/// A wrapper type for house IDs
+/// A wrapper type for apartment IDs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct HouseId(pub SimId);
+pub struct ApartmentId(pub SimId);
 
 /// A wrapper type for factory IDs
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

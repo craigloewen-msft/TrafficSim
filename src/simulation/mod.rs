@@ -16,14 +16,14 @@ mod world;
 // Re-export public types for external use
 // These may not be used within this crate but are part of the public API
 #[allow(unused_imports)]
-pub use building::{SimFactory, SimHouse, SimShop};
+pub use building::{SimFactory, SimApartment, SimShop};
 #[allow(unused_imports)]
 pub use car::{CarUpdateResult, SimCar};
 #[allow(unused_imports)]
 pub use factory::FACTORY_WORK_TIME;
 #[allow(unused_imports)]
 pub use game_state::{
-    GameState, COMMUTE_HEALTHY_DISTANCE, COST_FACTORY, COST_HOUSE, COST_ROAD, COST_SHOP,
+    GameState, COMMUTE_HEALTHY_DISTANCE, COST_FACTORY, COST_APARTMENT, COST_ROAD, COST_SHOP,
     GOAL_DELIVERIES, GOAL_MONEY, REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY,
     SHORT_COMMUTE_PENALTY, STARTING_BUDGET,
 };
@@ -33,7 +33,7 @@ pub use intersection::SimIntersection;
 pub use road_network::SimRoadNetwork;
 #[allow(unused_imports)]
 pub use types::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
+    CarId, FactoryId, ApartmentId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
     VehicleType, CAR_LENGTH, INTERSECTION_APPROACH_DISTANCE, SAFE_FOLLOWING_MULTIPLIER,
 };
 pub use world::SimWorld;

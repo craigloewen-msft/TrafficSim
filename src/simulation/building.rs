@@ -1,25 +1,25 @@
 //! Building types for the traffic simulation
 //!
-//! Houses, factories, and shops - standalone implementations.
+//! Apartments, factories, and shops - standalone implementations.
 
-use super::types::{CarId, FactoryId, HouseId, IntersectionId, ShopId};
+use super::types::{CarId, FactoryId, ApartmentId, IntersectionId, ShopId};
 
-/// A house in the simulation
+/// An apartment in the simulation
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
-pub struct SimHouse {
-    pub id: HouseId,
+pub struct SimApartment {
+    pub id: ApartmentId,
     pub intersection_id: IntersectionId,
-    /// The car owned by this house (if out driving)
-    pub car: Option<CarId>,
+    /// The cars owned by this apartment (10 total, if out driving)
+    pub cars: Vec<Option<CarId>>,
 }
 
-impl SimHouse {
-    pub fn new(id: HouseId, intersection_id: IntersectionId) -> Self {
+impl SimApartment {
+    pub fn new(id: ApartmentId, intersection_id: IntersectionId) -> Self {
         Self {
             id,
             intersection_id,
-            car: None,
+            cars: vec![None; 10],
         }
     }
 }
@@ -29,8 +29,8 @@ impl SimHouse {
 pub struct SimFactory {
     pub id: FactoryId,
     pub intersection_id: IntersectionId,
-    /// Workers currently at the factory (house_id, time_remaining until work done)
-    pub workers: Vec<(HouseId, f32)>,
+    /// Workers currently at the factory (apartment_id, time_remaining until work done)
+    pub workers: Vec<(ApartmentId, f32)>,
     /// Number of deliveries ready to be sent (max 2)
     pub deliveries_ready: u32,
     /// Maximum number of deliveries that can be stored

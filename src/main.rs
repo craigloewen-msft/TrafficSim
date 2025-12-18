@@ -90,7 +90,7 @@ fn run_simulation_validation(
     let mut world = simulation::SimWorld::create_test_world_with_seed(seed);
 
     // Track initial state for validation
-    let initial_houses = world.houses.len();
+    let initial_apartments = world.apartments.len();
     let initial_factories = world.factories.len();
     let initial_shops = world.shops.len();
     let initial_intersections = world.road_network.intersection_count();
@@ -125,12 +125,12 @@ fn run_simulation_validation(
                     world.road_network.road_count()
                 ));
             }
-            if world.houses.len() != initial_houses {
+            if world.apartments.len() != initial_apartments {
                 errors.push(format!(
-                    "Tick {}: House count changed from {} to {}",
+                    "Tick {}: Apartment count changed from {} to {}",
                     tick,
-                    initial_houses,
-                    world.houses.len()
+                    initial_apartments,
+                    world.apartments.len()
                 ));
             }
             if world.factories.len() != initial_factories {
@@ -181,7 +181,7 @@ fn run_simulation_validation(
     }
 
     // Check: Buildings should be intact
-    if world.houses.len() != initial_houses
+    if world.apartments.len() != initial_apartments
         || world.factories.len() != initial_factories
         || world.shops.len() != initial_shops
     {
