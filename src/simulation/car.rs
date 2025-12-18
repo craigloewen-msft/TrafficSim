@@ -144,10 +144,10 @@ impl SimCar {
             // Only check/acquire intersection if:
             // 1. We're not blocked by a car ahead, OR
             // 2. We already hold the lock on this intersection
-            if !blocked_by_car_ahead || target_intersection.is_held_by(self.id) {
-                if !target_intersection.can_proceed(self.id) {
-                    distance_delta = 0.0;
-                }
+            if (!blocked_by_car_ahead || target_intersection.is_held_by(self.id))
+                && !target_intersection.can_proceed(self.id)
+            {
+                distance_delta = 0.0;
             }
         }
 

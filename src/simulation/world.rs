@@ -5,21 +5,21 @@
 
 use anyhow::{Context, Result};
 use log::warn;
-use ordered_float::OrderedFloat;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
 
-use super::building::{SimFactory, SimApartment, SimShop};
+use super::building::{SimApartment, SimFactory, SimShop};
 use super::car::{CarUpdateResult, SimCar};
-use super::game_state::{GameState, COST_FACTORY, COST_APARTMENT, COST_ROAD, COST_SHOP};
+use super::car_manager;
+use super::game_state::{GameState, COST_APARTMENT, COST_FACTORY, COST_ROAD, COST_SHOP};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, ApartmentId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
-    VehicleType,
+    ApartmentId, CarId, FactoryId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
+    TripType, VehicleType,
 };
 
 /// Global demand metrics for the simulation
@@ -41,6 +41,14 @@ pub struct GlobalDemand {
     /// Total number of apartments
     pub total_apartments: usize,
 }
+
+/// Type alias for workers who have finished their shift at a factory
+/// Contains (factory_id, apartment_id) pairs indicating which workers should go home
+type WorkersDone = Vec<(FactoryId, ApartmentId)>;
+
+/// Type alias for trucks ready to dispatch for deliveries
+/// Contains (factory_id, shop_intersection) pairs indicating which trucks should leave
+type TrucksToDispatch = Vec<(FactoryId, IntersectionId)>;
 
 /// The main simulation world
 pub struct SimWorld {
@@ -383,74 +391,23 @@ impl SimWorld {
 
     /// Despawn a car and clean up references
     fn despawn_car(&mut self, car_id: CarId) {
-        // Get car info before removing
-        let car_info = self
-            .cars
-            .get(&car_id)
-            .map(|c| (c.origin_apartment, c.origin_factory));
-
-        self.cars.remove(&car_id);
-        self.road_network.remove_car_from_tracking(car_id);
-
-        if let Some((origin_apartment, origin_factory)) = car_info {
-            // Clear apartment car reference
-            if let Some(apartment_id) = origin_apartment {
-                if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                    for car_slot in &mut apartment.cars {
-                        if *car_slot == Some(car_id) {
-                            *car_slot = None;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Clear factory truck reference
-            if let Some(factory_id) = origin_factory {
-                if let Some(factory) = self.factories.get_mut(&factory_id) {
-                    if factory.truck == Some(car_id) {
-                        factory.truck = None;
-                    }
-                }
-            }
-        }
+        car_manager::despawn_car(
+            car_id,
+            &mut self.cars,
+            &mut self.road_network,
+            &mut self.apartments,
+            &mut self.factories,
+        );
     }
 
     /// Recalculate paths for all cars that might have invalid paths
     fn recalculate_car_paths(&mut self) {
-        let car_ids: Vec<CarId> = self.cars.keys().copied().collect();
-
-        for car_id in car_ids {
-            if let Some(car) = self.cars.get(&car_id) {
-                // Get the car's final destination
-                let destination = match car.path.last() {
-                    Some(dest) => *dest,
-                    None => continue, // No path to recalculate
-                };
-
-                // Get the current intersection the car is heading to
-                let current_target = match car.path.first() {
-                    Some(target) => *target,
-                    None => continue,
-                };
-
-                // Try to find a new path from current target to destination
-                let new_path = self.road_network.find_path(current_target, destination);
-
-                match new_path {
-                    Some(path) => {
-                        // Update the car's path
-                        if let Some(car) = self.cars.get_mut(&car_id) {
-                            car.path = std::iter::once(current_target).chain(path).collect();
-                        }
-                    }
-                    None => {
-                        // No valid path exists - despawn the car
-                        self.despawn_car(car_id);
-                    }
-                }
-            }
-        }
+        car_manager::recalculate_car_paths(
+            &mut self.cars,
+            &mut self.road_network,
+            &mut self.apartments,
+            &mut self.factories,
+        );
     }
 
     /// Split a road at a given position to create a new intersection
@@ -580,117 +537,39 @@ impl SimWorld {
         origin_apartment: Option<ApartmentId>,
         origin_factory: Option<FactoryId>,
     ) -> Result<CarId> {
-        // Find connected roads from the starting intersection
-        let connected_roads = self
-            .road_network
-            .get_connected_roads(from_intersection)
-            .context("Starting intersection not found in road network")?;
-
-        if connected_roads.is_empty() {
-            anyhow::bail!("No roads connected to starting intersection");
-        }
-
-        // Find the path
-        let path = self
-            .road_network
-            .find_path(from_intersection, to_intersection)
-            .context("No path found to destination")?;
-
-        if path.is_empty() && from_intersection != to_intersection {
-            anyhow::bail!("Empty path but different start/end");
-        }
-
-        // Get the first road in the path
-        let first_target = path.first().copied().unwrap_or(to_intersection);
-        let road_id = self
-            .road_network
-            .find_road_between(from_intersection, first_target)
-            .context("No road to first path intersection")?;
-
-        let road = self
-            .road_network
-            .get_road(road_id)
-            .context("Road not found")?;
-
-        let road_angle = road.angle;
-
-        let start_pos = *self
-            .road_network
-            .get_intersection_position(from_intersection)
-            .context("Start intersection position not found")?;
-
         // Generate random speed (trucks are faster)
         let speed = match vehicle_type {
             VehicleType::Car => self.random_range(2.0..6.0),
             VehicleType::Truck => self.random_range(4.0..8.0),
         };
 
-        let id = CarId(self.next_sim_id());
-        let car = SimCar::new(
-            id,
-            speed,
-            road_id,
+        // Generate the car ID using the world's ID generator
+        let car_id = CarId(self.next_sim_id());
+
+        let car = car_manager::spawn_vehicle(
+            car_id,
             from_intersection,
-            path,
-            start_pos,
-            road_angle,
+            to_intersection,
             vehicle_type,
             trip_type,
             origin_apartment,
             origin_factory,
-        );
-
-        // Register car on road
-        self.road_network.update_car_road_position(
-            id,
-            road_id,
-            OrderedFloat(0.0),
-            false,
-            None,
-            OrderedFloat(0.0),
+            &mut self.road_network,
+            speed,
         )?;
 
-        self.cars.insert(id, car);
-        Ok(id)
+        self.cars.insert(car_id, car);
+        Ok(car_id)
     }
 
     /// Update all cars in the simulation
     fn update_cars(&mut self, delta_secs: f32) -> Vec<(CarId, CarUpdateResult)> {
-        let mut results = Vec::new();
-
-        // Collect car IDs to avoid borrow issues
-        let car_ids: Vec<CarId> = self.cars.keys().copied().collect();
-
-        for car_id in car_ids {
-            // Get car mutably, update it, then process result
-            if let Some(mut car) = self.cars.remove(&car_id) {
-                let result =
-                    car.update(delta_secs, &mut self.road_network, &mut self.intersections);
-
-                match result {
-                    Ok(CarUpdateResult::Continue) => {
-                        self.cars.insert(car_id, car);
-                    }
-                    Ok(CarUpdateResult::Despawn) => {
-                        // Put car back temporarily so tick() can read its info
-                        self.cars.insert(car_id, car);
-                        results.push((car_id, CarUpdateResult::Despawn));
-                    }
-                    Ok(CarUpdateResult::ArrivedAtDestination(dest)) => {
-                        // Put car back temporarily so tick() can read its info
-                        self.cars.insert(car_id, car);
-                        results.push((car_id, CarUpdateResult::ArrivedAtDestination(dest)));
-                    }
-                    Err(_) => {
-                        // Put car back temporarily so tick() can read its info
-                        self.cars.insert(car_id, car);
-                        results.push((car_id, CarUpdateResult::Despawn));
-                    }
-                }
-            }
-        }
-
-        results
+        car_manager::update_cars(
+            delta_secs,
+            &mut self.cars,
+            &mut self.road_network,
+            &mut self.intersections,
+        )
     }
 
     /// Update all intersections
@@ -707,10 +586,7 @@ impl SimWorld {
 
     /// Update all factories
     /// Returns (workers_done_apartment_ids, trucks_to_dispatch)
-    fn update_factories(
-        &mut self,
-        delta_secs: f32,
-    ) -> (Vec<(FactoryId, ApartmentId)>, Vec<(FactoryId, IntersectionId)>) {
+    fn update_factories(&mut self, delta_secs: f32) -> (WorkersDone, TrucksToDispatch) {
         let mut workers_done = Vec::new();
         let mut trucks_to_dispatch = Vec::new();
 
@@ -1157,6 +1033,7 @@ impl SimWorld {
     }
 
     /// Internal helper to build the test world structure
+    #[allow(clippy::needless_range_loop)]
     pub fn build_test_world(mut world: SimWorld) -> Self {
         // Create a 3x3 grid of intersections (main roads)
         let spacing = 20.0;

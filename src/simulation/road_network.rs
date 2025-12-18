@@ -273,7 +273,6 @@ impl SimRoadNetwork {
     }
 
     /// Gets all intersection IDs in the network
-    #[allow(dead_code)]
     pub fn get_all_intersections(&self) -> Vec<IntersectionId> {
         self.intersection_to_node.keys().copied().collect()
     }
