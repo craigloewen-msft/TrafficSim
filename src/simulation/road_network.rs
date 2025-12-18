@@ -54,9 +54,14 @@ pub struct SimRoadNetwork {
     /// Maps node indices back to intersection IDs
     node_to_intersection: HashMap<NodeIndex, IntersectionId>,
 
-    /// Path cache (currently unused - traffic-aware pathfinding doesn't cache results
-    /// since traffic conditions change frequently)
+    /// Path cache - currently unused since traffic-aware pathfinding doesn't cache
+    /// results because traffic conditions change frequently. The cache is cleared
+    /// when the road network structure changes to maintain consistency.
     path_cache: HashMap<IntersectionId, HashMap<IntersectionId, Vec<IntersectionId>>>,
+
+    /// Maps road IDs to their base weight (road length * 100) for efficient lookup
+    /// during traffic-aware pathfinding
+    road_base_weights: HashMap<RoadId, u32>,
 
     /// Maps road IDs to lists of (distance, car_id) tuples for traffic detection
     cars_on_roads: HashMap<RoadId, BTreeMap<OrderedFloat<f32>, CarId>>,
@@ -95,7 +100,10 @@ impl SimRoadNetwork {
             (1.0 + car_count as f32 * TRAFFIC_CONGESTION_FACTOR).min(MAX_TRAFFIC_MULTIPLIER);
 
         let traffic_weight = (base_weight as f32 * traffic_multiplier) as u32;
-        traffic_weight.max(1) // Ensure minimum weight of 1
+        // Ensure minimum weight of 1 to prevent zero-weight edges, which could cause
+        // the pathfinding algorithm to prefer very short congested roads over longer
+        // uncongested ones, and to avoid potential division issues
+        traffic_weight.max(1)
     }
 
     /// Get the number of cars currently on a specific road
@@ -150,6 +158,7 @@ impl SimRoadNetwork {
     pub fn add_road(&mut self, road: SimRoad) {
         let start_id = road.start_intersection;
         let end_id = road.end_intersection;
+        let road_id = road.id;
 
         // Ensure both intersections exist (they should already, but just in case)
         if !self.intersection_to_node.contains_key(&start_id) {
@@ -163,10 +172,12 @@ impl SimRoadNetwork {
         let end_node = self.intersection_to_node[&end_id];
 
         let edge_data = RoadEdge::from_road(&road);
+        // Store base weight for efficient traffic-aware pathfinding lookup
+        self.road_base_weights.insert(road_id, edge_data.weight);
         self.graph.add_edge(start_node, end_node, edge_data);
 
         // Store the road
-        self.roads.insert(road.id, road);
+        self.roads.insert(road_id, road);
 
         self.path_cache.clear();
     }
@@ -224,18 +235,12 @@ impl SimRoadNetwork {
         let start_node = self.intersection_to_node.get(&start)?;
         let end_node = self.intersection_to_node.get(&end)?;
 
-        // Pre-compute traffic weights for all roads
-        // We need to do this because the astar closure can't access self
+        // Pre-compute traffic weights for all roads using the cached base weights
+        // This is O(n) where n is the number of roads, avoiding the previous O(n²) lookup
         let traffic_weights: HashMap<RoadId, u32> = self
-            .roads
-            .keys()
-            .map(|&road_id| {
-                let base_weight = self
-                    .graph
-                    .edge_references()
-                    .find(|e| e.weight().road_id == road_id)
-                    .map(|e| e.weight().weight)
-                    .unwrap_or(1);
+            .road_base_weights
+            .iter()
+            .map(|(&road_id, &base_weight)| {
                 let traffic_weight = self.calculate_traffic_weight(road_id, base_weight);
                 (road_id, traffic_weight)
             })
@@ -372,6 +377,9 @@ impl SimRoadNetwork {
     pub fn remove_road(&mut self, road_id: RoadId) -> Result<Vec<CarId>> {
         let road = self.roads.remove(&road_id).context("Road not found")?;
 
+        // Remove base weight cache entry
+        self.road_base_weights.remove(&road_id);
+
         let start_node = self
             .intersection_to_node
             .get(&road.start_intersection)
@@ -434,6 +442,7 @@ impl SimRoadNetwork {
         let mut affected_cars = Vec::new();
         for road_id in &roads_to_remove {
             self.roads.remove(road_id);
+            self.road_base_weights.remove(road_id);
             if let Some(car_map) = self.cars_on_roads.remove(road_id) {
                 affected_cars.extend(car_map.values().copied());
             }
