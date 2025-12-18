@@ -13,6 +13,15 @@ use std::ops::Bound;
 
 use super::types::{CarId, IntersectionId, Position, RoadId, SimRoad};
 
+/// Weight multiplier applied per car on a road for traffic-aware pathfinding.
+/// Higher values make congested roads less attractive.
+/// A value of 0.2 means each car adds 20% to the base road weight.
+const TRAFFIC_CONGESTION_FACTOR: f32 = 0.2;
+
+/// Maximum traffic multiplier to prevent extreme congestion penalties.
+/// Limits the traffic penalty to 3x the base weight even on heavily congested roads.
+const MAX_TRAFFIC_MULTIPLIER: f32 = 3.0;
+
 /// Edge data for the road network graph
 #[derive(Debug, Clone, Copy)]
 pub struct RoadEdge {
@@ -45,8 +54,14 @@ pub struct SimRoadNetwork {
     /// Maps node indices back to intersection IDs
     node_to_intersection: HashMap<NodeIndex, IntersectionId>,
 
-    /// Cached path results
+    /// Path cache - currently unused since traffic-aware pathfinding doesn't cache
+    /// results because traffic conditions change frequently. The cache is cleared
+    /// when the road network structure changes to maintain consistency.
     path_cache: HashMap<IntersectionId, HashMap<IntersectionId, Vec<IntersectionId>>>,
+
+    /// Maps road IDs to their base weight (road length * 100) for efficient lookup
+    /// during traffic-aware pathfinding
+    road_base_weights: HashMap<RoadId, u32>,
 
     /// Maps road IDs to lists of (distance, car_id) tuples for traffic detection
     cars_on_roads: HashMap<RoadId, BTreeMap<OrderedFloat<f32>, CarId>>,
@@ -61,6 +76,61 @@ pub struct SimRoadNetwork {
 impl SimRoadNetwork {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Calculate traffic-aware weight for a road.
+    ///
+    /// The weight combines the base road length with a traffic penalty based on
+    /// the number of cars currently on the road. This allows pathfinding to
+    /// prefer less congested routes.
+    ///
+    /// Formula: base_weight * min(1 + (car_count * TRAFFIC_CONGESTION_FACTOR), MAX_TRAFFIC_MULTIPLIER)
+    pub fn calculate_traffic_weight(&self, road_id: RoadId, base_weight: u32) -> u32 {
+        let car_count = self
+            .cars_on_roads
+            .get(&road_id)
+            .map(|cars| cars.len())
+            .unwrap_or(0);
+
+        if car_count == 0 {
+            return base_weight;
+        }
+
+        let traffic_multiplier =
+            (1.0 + car_count as f32 * TRAFFIC_CONGESTION_FACTOR).min(MAX_TRAFFIC_MULTIPLIER);
+
+        let traffic_weight = (base_weight as f32 * traffic_multiplier) as u32;
+        // Ensure minimum weight of 1 to prevent zero-weight edges, which could cause
+        // the pathfinding algorithm to prefer very short congested roads over longer
+        // uncongested ones, and to avoid potential division issues
+        traffic_weight.max(1)
+    }
+
+    /// Get the number of cars currently on a specific road
+    pub fn get_car_count_on_road(&self, road_id: RoadId) -> usize {
+        self.cars_on_roads
+            .get(&road_id)
+            .map(|cars| cars.len())
+            .unwrap_or(0)
+    }
+
+    /// Calculate traffic density for a road (cars per unit length)
+    ///
+    /// Returns a value between 0.0 (empty) and higher values indicating
+    /// more congestion. Useful for visualization or advanced traffic metrics.
+    pub fn calculate_traffic_density(&self, road_id: RoadId) -> f32 {
+        let car_count = self.get_car_count_on_road(road_id);
+        if car_count == 0 {
+            return 0.0;
+        }
+
+        if let Some(road) = self.roads.get(&road_id) {
+            if road.length > 0.0 {
+                return car_count as f32 / road.length;
+            }
+        }
+
+        0.0
     }
 
     /// Adds an intersection to the network graph
@@ -88,6 +158,7 @@ impl SimRoadNetwork {
     pub fn add_road(&mut self, road: SimRoad) {
         let start_id = road.start_intersection;
         let end_id = road.end_intersection;
+        let road_id = road.id;
 
         // Ensure both intersections exist (they should already, but just in case)
         if !self.intersection_to_node.contains_key(&start_id) {
@@ -101,10 +172,12 @@ impl SimRoadNetwork {
         let end_node = self.intersection_to_node[&end_id];
 
         let edge_data = RoadEdge::from_road(&road);
+        // Store base weight for efficient traffic-aware pathfinding lookup
+        self.road_base_weights.insert(road_id, edge_data.weight);
         self.graph.add_edge(start_node, end_node, edge_data);
 
         // Store the road
-        self.roads.insert(road.id, road);
+        self.roads.insert(road_id, road);
 
         self.path_cache.clear();
     }
@@ -144,6 +217,12 @@ impl SimRoadNetwork {
     }
 
     /// Finds a path between two intersections using A* (Dijkstra with null heuristic)
+    ///
+    /// This method uses traffic-aware pathfinding, taking into account the current
+    /// number of cars on each road. Roads with more traffic are weighted higher,
+    /// making the algorithm prefer less congested routes.
+    ///
+    /// Note: Traffic-aware paths are not cached since traffic conditions change frequently.
     pub fn find_path(
         &mut self,
         start: IntersectionId,
@@ -153,21 +232,28 @@ impl SimRoadNetwork {
             return Some(vec![]);
         }
 
-        // Check cache first
-        if let Some(cached_paths) = self.path_cache.get(&start) {
-            if let Some(path) = cached_paths.get(&end) {
-                return Some(path.clone());
-            }
-        }
-
         let start_node = self.intersection_to_node.get(&start)?;
         let end_node = self.intersection_to_node.get(&end)?;
+
+        // Pre-compute traffic weights for all roads using the cached base weights
+        // This is O(n) where n is the number of roads, avoiding the previous O(n²) lookup
+        let traffic_weights: HashMap<RoadId, u32> = self
+            .road_base_weights
+            .iter()
+            .map(|(&road_id, &base_weight)| {
+                let traffic_weight = self.calculate_traffic_weight(road_id, base_weight);
+                (road_id, traffic_weight)
+            })
+            .collect();
 
         let result = astar(
             &self.graph,
             *start_node,
             |node| node == *end_node,
-            |edge| edge.weight().weight,
+            |edge| {
+                let road_id = edge.weight().road_id;
+                *traffic_weights.get(&road_id).unwrap_or(&edge.weight().weight)
+            },
             |_| 0, // Null heuristic = Dijkstra
         )?;
 
@@ -180,11 +266,8 @@ impl SimRoadNetwork {
             .filter_map(|node_idx| self.node_to_intersection.get(node_idx).copied())
             .collect();
 
-        // Cache the result
-        self.path_cache
-            .entry(start)
-            .or_default()
-            .insert(end, path.clone());
+        // Note: We intentionally don't cache traffic-aware paths since traffic
+        // conditions change frequently. Caching would return stale routes.
 
         Some(path)
     }
@@ -294,6 +377,9 @@ impl SimRoadNetwork {
     pub fn remove_road(&mut self, road_id: RoadId) -> Result<Vec<CarId>> {
         let road = self.roads.remove(&road_id).context("Road not found")?;
 
+        // Remove base weight cache entry
+        self.road_base_weights.remove(&road_id);
+
         let start_node = self
             .intersection_to_node
             .get(&road.start_intersection)
@@ -356,6 +442,7 @@ impl SimRoadNetwork {
         let mut affected_cars = Vec::new();
         for road_id in &roads_to_remove {
             self.roads.remove(road_id);
+            self.road_base_weights.remove(road_id);
             if let Some(car_map) = self.cars_on_roads.remove(road_id) {
                 affected_cars.extend(car_map.values().copied());
             }
