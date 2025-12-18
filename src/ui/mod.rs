@@ -20,7 +20,7 @@ use building::{
 };
 use components::*;
 use input::{handle_camera_mouse, handle_camera_movement, handle_input};
-use spawner::{spawn_initial_visuals, HouseVisualAssets};
+use spawner::{spawn_initial_visuals, ApartmentVisualAssets};
 use sync::{
     sync_cars, tick_simulation, update_factory_delivery_indicators, update_factory_indicators,
     update_global_demand_text, update_apartment_indicators, update_shop_indicators,
@@ -36,7 +36,7 @@ impl Plugin for TrafficSimUIPlugin {
             .init_resource::<EntityMappings>()
             .init_resource::<CameraSettings>()
             .init_resource::<BuildingState>()
-            .init_resource::<HouseVisualAssets>()
+            .init_resource::<ApartmentVisualAssets>()
             .add_systems(
                 Startup,
                 (

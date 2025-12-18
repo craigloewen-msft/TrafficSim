@@ -767,22 +767,23 @@ impl SimWorld {
             return;
         }
 
-        // Collect apartment IDs and available car slots
+        // Collect apartments with available car slots (only spawn one car per apartment per tick)
         let mut apartment_slots_to_spawn = Vec::new();
         
         for (apartment_id, apartment) in &self.apartments {
             let apartment_intersection = apartment.intersection_id;
             
-            // Try to spawn a car from each empty slot (up to 10 cars per apartment)
+            // Find the first empty slot - only spawn ONE car per apartment per tick
             for (slot_index, car_slot) in apartment.cars.iter().enumerate() {
                 // Only spawn if this slot doesn't have a car out
                 if car_slot.is_none() {
                     apartment_slots_to_spawn.push((*apartment_id, slot_index, apartment_intersection));
+                    break; // Only spawn one car per apartment per tick
                 }
             }
         }
 
-        // Now spawn cars for each available slot
+        // Now spawn one car per apartment (if they have an empty slot)
         for (apartment_id, slot_index, apartment_intersection) in apartment_slots_to_spawn {
             // Choose random factory
             let (_factory_id, factory_intersection) = match self.choose_random(&factories_accepting)
@@ -843,14 +844,30 @@ impl SimWorld {
             };
 
             // Spawn car returning home
-            let _ = self.spawn_vehicle(
+            match self.spawn_vehicle(
                 factory_intersection,
                 apartment_intersection,
                 VehicleType::Car,
                 TripType::Return,
                 Some(apartment_id),
                 Some(factory_id),
-            );
+            ) {
+                Ok(return_car_id) => {
+                    // Set apartment slot with the returning car's ID
+                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                        // Find first empty slot and assign the return car
+                        for car_slot in &mut apartment.cars {
+                            if car_slot.is_none() {
+                                *car_slot = Some(return_car_id);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Failed to spawn return car - slot remains empty for next spawn attempt
+                }
+            }
         }
 
         // Dispatch trucks to make deliveries
@@ -922,6 +939,17 @@ impl SimWorld {
                                 }
 
                                 if worker_accepted {
+                                    // Clear apartment slot since worker is at factory (will be set when return car spawns)
+                                    if let Some(apartment_id) = origin_apartment {
+                                        if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                            for car_slot in &mut apartment.cars {
+                                                if *car_slot == Some(car_id) {
+                                                    *car_slot = None;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
                                     // Remove car from tracking while at work (will respawn when returning home)
                                     self.road_network.remove_car_from_tracking(car_id);
                                     self.cars.remove(&car_id);
@@ -932,14 +960,37 @@ impl SimWorld {
                                             self.apartments.get(&apartment_id).map(|a| a.intersection_id);
                                         if let Some(apartment_intersection) = apartment_intersection {
                                             // Spawn car returning home
-                                            let _ = self.spawn_vehicle(
+                                            match self.spawn_vehicle(
                                                 dest,
                                                 apartment_intersection,
                                                 VehicleType::Car,
                                                 TripType::Return,
                                                 Some(apartment_id),
                                                 destination_factory,
-                                            );
+                                            ) {
+                                                Ok(new_car_id) => {
+                                                    // Update apartment slot with new car_id
+                                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                                        for car_slot in &mut apartment.cars {
+                                                            if *car_slot == Some(car_id) {
+                                                                *car_slot = Some(new_car_id);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    // Failed to spawn return car, just clear the slot
+                                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                                        for car_slot in &mut apartment.cars {
+                                                            if *car_slot == Some(car_id) {
+                                                                *car_slot = None;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     // Despawn the current car
