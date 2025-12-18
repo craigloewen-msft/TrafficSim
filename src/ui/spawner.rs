@@ -319,13 +319,13 @@ pub fn spawn_house_visual(
     let house_color = Color::srgb(0.7, 0.6, 0.4);
     let commute_radius_mesh = house_assets
         .commute_radius_mesh
-        .get_or_insert_with(|| meshes.add(Circle::new(COMMUTE_HEALTHY_DISTANCE)))
+        .get_or_insert_with(|| meshes.add(Annulus::new(COMMUTE_HEALTHY_DISTANCE - 0.05, COMMUTE_HEALTHY_DISTANCE)))
         .clone();
     let commute_radius_material = house_assets
         .commute_radius_material
         .get_or_insert_with(|| {
             materials.add(StandardMaterial {
-                base_color: Color::srgba(1.0, 0.8, 0.2, 0.4),
+                base_color: Color::srgba(1.0, 0.8, 0.2, 0.3),
                 alpha_mode: AlphaMode::Blend,
                 unlit: true,
                 ..default()
