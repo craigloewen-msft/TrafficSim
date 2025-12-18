@@ -3,10 +3,10 @@
 //! A traffic simulation that can run in both headless and UI modes.
 //! The simulation models cars traveling between houses, factories, and shops.
 
-mod simulation;
+use traffic_sim::simulation;
 
 #[cfg(feature = "ui")]
-mod ui;
+use traffic_sim::ui;
 
 use clap::Parser;
 
@@ -365,7 +365,7 @@ fn run_headless_with_display(ticks: u32, delta: f32, seed: u64) {
 /// - Earn money from successful deliveries
 /// - Reach the goal to win the game!
 fn run_with_ui() {
-    use crate::ui::UI_STARTING_BUDGET;
+    use ui::UI_STARTING_BUDGET;
     use bevy::log::LogPlugin;
     use bevy::prelude::*;
 

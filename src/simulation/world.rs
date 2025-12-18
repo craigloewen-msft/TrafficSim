@@ -115,7 +115,6 @@ impl SimWorld {
     }
 
     /// Create a new SimWorld with game state enabled (for playing as a game)
-    #[allow(dead_code)]
     pub fn new_with_game() -> Self {
         Self::new_internal(None, Some(GameState::new()))
     }
@@ -148,7 +147,6 @@ impl SimWorld {
     /// Attempts to charge the given cost from the game state if one exists.
     /// Returns `true` when no game state is attached so headless simulations
     /// can operate without budget constraints.
-    #[allow(dead_code)]
     fn spend_for_game(&mut self, cost: i32) -> bool {
         match &mut self.game_state {
             Some(game_state) => game_state.spend(cost),
@@ -225,7 +223,6 @@ impl SimWorld {
 
     /// Add an apartment with game cost checking
     /// Returns Some(apartment_id) if successful, None if insufficient funds
-    #[allow(dead_code)]
     pub fn try_add_apartment(&mut self, intersection_id: IntersectionId) -> Option<ApartmentId> {
         if !self.spend_for_game(COST_APARTMENT) {
             return None;
@@ -235,7 +232,6 @@ impl SimWorld {
 
     /// Add a factory with game cost checking
     /// Returns Some(factory_id) if successful, None if insufficient funds
-    #[allow(dead_code)]
     pub fn try_add_factory(&mut self, intersection_id: IntersectionId) -> Option<FactoryId> {
         if !self.spend_for_game(COST_FACTORY) {
             return None;
@@ -245,7 +241,6 @@ impl SimWorld {
 
     /// Add a shop with game cost checking
     /// Returns Some(shop_id) if successful, None if insufficient funds
-    #[allow(dead_code)]
     pub fn try_add_shop(&mut self, intersection_id: IntersectionId) -> Option<ShopId> {
         if !self.spend_for_game(COST_SHOP) {
             return None;
@@ -255,7 +250,6 @@ impl SimWorld {
 
     /// Add a two-way road with game cost checking
     /// Returns Some((forward, backward)) if successful, None if insufficient funds
-    #[allow(dead_code)]
     pub fn try_add_two_way_road(
         &mut self,
         start: IntersectionId,
@@ -269,7 +263,6 @@ impl SimWorld {
 
     /// Add roads at positions with game cost checking
     /// Returns Some(...) if successful, None if insufficient funds
-    #[allow(dead_code)]
     pub fn try_add_road_at_positions(
         &mut self,
         start_pos: Position,
@@ -285,7 +278,6 @@ impl SimWorld {
 
     /// Remove an apartment from the world
     /// Returns the cars that were associated with the apartment (if any)
-    #[allow(dead_code)]
     pub fn remove_apartment(&mut self, apartment_id: ApartmentId) -> Vec<CarId> {
         let apartment = match self.apartments.remove(&apartment_id) {
             Some(a) => a,
@@ -295,20 +287,17 @@ impl SimWorld {
     }
 
     /// Remove a factory from the world
-    #[allow(dead_code)]
     pub fn remove_factory(&mut self, factory_id: FactoryId) {
         self.factories.remove(&factory_id);
     }
 
     /// Remove a shop from the world
-    #[allow(dead_code)]
     pub fn remove_shop(&mut self, shop_id: ShopId) {
         self.shops.remove(&shop_id);
     }
 
     /// Remove a road from the world
     /// Cars on the road will be despawned
-    #[allow(dead_code)]
     pub fn remove_road(&mut self, road_id: RoadId) -> Result<()> {
         let cars_on_road = self.road_network.remove_road(road_id)?;
 
@@ -323,7 +312,6 @@ impl SimWorld {
     /// Remove an intersection and all connected roads
     /// Cars on affected roads will be despawned
     /// Buildings at the intersection will be removed
-    #[allow(dead_code)]
     pub fn remove_intersection(&mut self, intersection_id: IntersectionId) -> Result<()> {
         // Remove any buildings at this intersection
         let apartments_to_remove: Vec<ApartmentId> = self
@@ -378,7 +366,6 @@ impl SimWorld {
 
     /// Remove a two-way road (both directions)
     /// Cars on either direction will be despawned
-    #[allow(dead_code)]
     pub fn remove_two_way_road(
         &mut self,
         intersection_a: IntersectionId,
@@ -414,7 +401,6 @@ impl SimWorld {
     }
 
     /// Recalculate paths for all cars that might have invalid paths
-    #[allow(dead_code)]
     fn recalculate_car_paths(&mut self) {
         car_manager::recalculate_car_paths(
             &mut self.cars,
@@ -426,7 +412,6 @@ impl SimWorld {
 
     /// Split a road at a given position to create a new intersection
     /// Returns the new intersection ID and the IDs of the new roads
-    #[allow(dead_code)]
     pub fn split_road_at_position(
         &mut self,
         road_id: RoadId,
@@ -480,7 +465,6 @@ impl SimWorld {
     /// Dynamically add a two-way road between two positions
     /// If positions are close to existing intersections, reuse them
     /// If a position is close to an existing road, split that road
-    #[allow(dead_code)]
     pub fn add_road_at_positions(
         &mut self,
         start_pos: Position,
@@ -510,7 +494,6 @@ impl SimWorld {
 
     /// Find an existing intersection near a position, or create a new one
     /// If the position is near an existing road, split that road
-    #[allow(dead_code)]
     fn find_or_create_intersection(
         &mut self,
         position: Position,
@@ -560,7 +543,11 @@ impl SimWorld {
             VehicleType::Truck => self.random_range(4.0..8.0),
         };
 
+        // Generate the car ID using the world's ID generator
+        let car_id = CarId(self.next_sim_id());
+
         let car = car_manager::spawn_vehicle(
+            car_id,
             from_intersection,
             to_intersection,
             vehicle_type,
@@ -568,13 +555,11 @@ impl SimWorld {
             origin_apartment,
             origin_factory,
             &mut self.road_network,
-            &mut self.next_id,
             speed,
         )?;
 
-        let id = car.id;
-        self.cars.insert(id, car);
-        Ok(id)
+        self.cars.insert(car_id, car);
+        Ok(car_id)
     }
 
     /// Update all cars in the simulation
@@ -1038,7 +1023,6 @@ impl SimWorld {
     }
 
     /// Create a default test world with some roads and buildings
-    #[allow(dead_code)]
     pub fn create_test_world() -> Self {
         Self::build_test_world(SimWorld::new())
     }

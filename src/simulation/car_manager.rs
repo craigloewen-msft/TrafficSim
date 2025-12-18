@@ -11,13 +11,12 @@ use super::building::{SimApartment, SimFactory};
 use super::car::{CarUpdateResult, SimCar};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
-use super::types::{
-    ApartmentId, CarId, FactoryId, IntersectionId, SimId, TripType, VehicleType,
-};
+use super::types::{ApartmentId, CarId, FactoryId, IntersectionId, TripType, VehicleType};
 
 /// Spawn a vehicle from a given intersection to a destination
 ///
 /// # Arguments
+/// * `car_id` - The pre-generated car ID
 /// * `from_intersection` - The starting intersection
 /// * `to_intersection` - The destination intersection
 /// * `vehicle_type` - The type of vehicle (Car or Truck)
@@ -25,12 +24,12 @@ use super::types::{
 /// * `origin_apartment` - The apartment this car belongs to (for cars)
 /// * `origin_factory` - The factory this truck belongs to (for trucks)
 /// * `road_network` - The road network to use for pathfinding
-/// * `next_id` - A mutable reference to generate the next ID
 /// * `speed` - The speed of the vehicle
 ///
 /// Returns the new car if successful
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_vehicle(
+    car_id: CarId,
     from_intersection: IntersectionId,
     to_intersection: IntersectionId,
     vehicle_type: VehicleType,
@@ -38,7 +37,6 @@ pub fn spawn_vehicle(
     origin_apartment: Option<ApartmentId>,
     origin_factory: Option<FactoryId>,
     road_network: &mut SimRoadNetwork,
-    next_id: &mut usize,
     speed: f32,
 ) -> Result<SimCar> {
     // Find connected roads from the starting intersection
@@ -75,11 +73,8 @@ pub fn spawn_vehicle(
         .get_intersection_position(from_intersection)
         .context("Start intersection position not found")?;
 
-    let id = CarId(SimId(*next_id));
-    *next_id += 1;
-
     let car = SimCar::new(
-        id,
+        car_id,
         speed,
         road_id,
         from_intersection,
@@ -94,7 +89,7 @@ pub fn spawn_vehicle(
 
     // Register car on road
     road_network.update_car_road_position(
-        id,
+        car_id,
         road_id,
         OrderedFloat(0.0),
         false,
