@@ -6,6 +6,7 @@
 
 mod building;
 mod car;
+mod car_manager;
 mod factory;
 mod game_state;
 mod intersection;

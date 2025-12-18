@@ -4,9 +4,13 @@
 //! to turn the traffic simulation into a fun management game.
 
 /// Building costs for the game
+#[allow(dead_code)]
 pub const COST_ROAD: i32 = 50;
+#[allow(dead_code)]
 pub const COST_APARTMENT: i32 = 200;
+#[allow(dead_code)]
 pub const COST_FACTORY: i32 = 500;
+#[allow(dead_code)]
 pub const COST_SHOP: i32 = 300;
 
 /// Revenue from successful operations
@@ -66,12 +70,14 @@ impl GameState {
     }
 
     /// Check if player can afford a purchase
+    #[allow(dead_code)]
     pub fn can_afford(&self, cost: i32) -> bool {
         self.money >= cost
     }
 
     /// Deduct money for a purchase
     /// Returns true if successful, false if insufficient funds
+    #[allow(dead_code)]
     pub fn spend(&mut self, cost: i32) -> bool {
         if self.can_afford(cost) {
             self.money -= cost;
@@ -132,11 +138,13 @@ impl GameState {
     }
 
     /// Get total deliveries (workers + shop)
+    #[allow(dead_code)]
     pub fn total_deliveries(&self) -> usize {
         self.worker_trips_completed + self.shop_deliveries_completed
     }
 
     /// Get a summary string for display
+    #[allow(dead_code)]
     pub fn summary(&self) -> String {
         format!(
             "Money: ${} | Worker Trips: {} | Shop Deliveries: {} | Time: {:.1}s",
@@ -145,6 +153,7 @@ impl GameState {
     }
 
     /// Get progress towards goals as a percentage
+    #[allow(dead_code)]
     pub fn goal_progress(&self) -> (f32, f32) {
         let delivery_progress =
             (self.shop_deliveries_completed as f32 / GOAL_DELIVERIES as f32 * 100.0).min(100.0);

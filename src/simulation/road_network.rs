@@ -107,6 +107,7 @@ impl SimRoadNetwork {
     }
 
     /// Get the number of cars currently on a specific road
+    #[allow(dead_code)]
     pub fn get_car_count_on_road(&self, road_id: RoadId) -> usize {
         self.cars_on_roads
             .get(&road_id)
@@ -118,6 +119,7 @@ impl SimRoadNetwork {
     ///
     /// Returns a value between 0.0 (empty) and higher values indicating
     /// more congestion. Useful for visualization or advanced traffic metrics.
+    #[allow(dead_code)]
     pub fn calculate_traffic_density(&self, road_id: RoadId) -> f32 {
         let car_count = self.get_car_count_on_road(road_id);
         if car_count == 0 {
@@ -415,6 +417,7 @@ impl SimRoadNetwork {
 
     /// Remove an intersection and all connected roads
     /// Returns (removed_road_ids, cars_on_removed_roads)
+    #[allow(dead_code)]
     pub fn remove_intersection(
         &mut self,
         intersection_id: IntersectionId,
@@ -457,6 +460,7 @@ impl SimRoadNetwork {
     }
 
     /// Get all roads starting or ending at an intersection
+    #[allow(dead_code)]
     pub fn get_roads_at_intersection(&self, intersection_id: IntersectionId) -> Vec<RoadId> {
         self.roads
             .iter()
@@ -469,6 +473,7 @@ impl SimRoadNetwork {
     }
 
     /// Get all cars currently on a specific road
+    #[allow(dead_code)]
     pub fn get_cars_on_road(&self, road_id: RoadId) -> Vec<CarId> {
         self.cars_on_roads
             .get(&road_id)
@@ -484,6 +489,7 @@ impl SimRoadNetwork {
     }
 
     /// Check if an intersection has any connected roads
+    #[allow(dead_code)]
     pub fn intersection_has_roads(&self, intersection_id: IntersectionId) -> bool {
         self.roads.values().any(|road| {
             road.start_intersection == intersection_id || road.end_intersection == intersection_id
@@ -491,6 +497,7 @@ impl SimRoadNetwork {
     }
 
     /// Find the closest intersection to a given position
+    #[allow(dead_code)]
     pub fn find_closest_intersection(&self, position: &Position) -> Option<IntersectionId> {
         self.intersection_positions
             .iter()
@@ -506,6 +513,7 @@ impl SimRoadNetwork {
 
     /// Find the closest point on any road to a given position
     /// Returns (road_id, closest_position, distance_along_road, total_road_length)
+    #[allow(dead_code)]
     pub fn find_closest_point_on_road(
         &self,
         position: &Position,

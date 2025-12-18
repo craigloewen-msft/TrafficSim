@@ -5,21 +5,21 @@
 
 use anyhow::{Context, Result};
 use log::warn;
-use ordered_float::OrderedFloat;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
 
-use super::building::{SimFactory, SimApartment, SimShop};
+use super::building::{SimApartment, SimFactory, SimShop};
 use super::car::{CarUpdateResult, SimCar};
-use super::game_state::{GameState, COST_FACTORY, COST_APARTMENT, COST_ROAD, COST_SHOP};
+use super::car_manager;
+use super::game_state::{GameState, COST_APARTMENT, COST_FACTORY, COST_ROAD, COST_SHOP};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, ApartmentId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
-    VehicleType,
+    ApartmentId, CarId, FactoryId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
+    TripType, VehicleType,
 };
 
 /// Global demand metrics for the simulation
@@ -41,6 +41,14 @@ pub struct GlobalDemand {
     /// Total number of apartments
     pub total_apartments: usize,
 }
+
+/// Type alias for workers who have finished their shift at a factory
+/// Contains (factory_id, apartment_id) pairs indicating which workers should go home
+type WorkersDone = Vec<(FactoryId, ApartmentId)>;
+
+/// Type alias for trucks ready to dispatch for deliveries
+/// Contains (factory_id, shop_intersection) pairs indicating which trucks should leave
+type TrucksToDispatch = Vec<(FactoryId, IntersectionId)>;
 
 /// The main simulation world
 pub struct SimWorld {
@@ -107,6 +115,7 @@ impl SimWorld {
     }
 
     /// Create a new SimWorld with game state enabled (for playing as a game)
+    #[allow(dead_code)]
     pub fn new_with_game() -> Self {
         Self::new_internal(None, Some(GameState::new()))
     }
@@ -139,6 +148,7 @@ impl SimWorld {
     /// Attempts to charge the given cost from the game state if one exists.
     /// Returns `true` when no game state is attached so headless simulations
     /// can operate without budget constraints.
+    #[allow(dead_code)]
     fn spend_for_game(&mut self, cost: i32) -> bool {
         match &mut self.game_state {
             Some(game_state) => game_state.spend(cost),
@@ -215,6 +225,7 @@ impl SimWorld {
 
     /// Add an apartment with game cost checking
     /// Returns Some(apartment_id) if successful, None if insufficient funds
+    #[allow(dead_code)]
     pub fn try_add_apartment(&mut self, intersection_id: IntersectionId) -> Option<ApartmentId> {
         if !self.spend_for_game(COST_APARTMENT) {
             return None;
@@ -224,6 +235,7 @@ impl SimWorld {
 
     /// Add a factory with game cost checking
     /// Returns Some(factory_id) if successful, None if insufficient funds
+    #[allow(dead_code)]
     pub fn try_add_factory(&mut self, intersection_id: IntersectionId) -> Option<FactoryId> {
         if !self.spend_for_game(COST_FACTORY) {
             return None;
@@ -233,6 +245,7 @@ impl SimWorld {
 
     /// Add a shop with game cost checking
     /// Returns Some(shop_id) if successful, None if insufficient funds
+    #[allow(dead_code)]
     pub fn try_add_shop(&mut self, intersection_id: IntersectionId) -> Option<ShopId> {
         if !self.spend_for_game(COST_SHOP) {
             return None;
@@ -242,6 +255,7 @@ impl SimWorld {
 
     /// Add a two-way road with game cost checking
     /// Returns Some((forward, backward)) if successful, None if insufficient funds
+    #[allow(dead_code)]
     pub fn try_add_two_way_road(
         &mut self,
         start: IntersectionId,
@@ -255,6 +269,7 @@ impl SimWorld {
 
     /// Add roads at positions with game cost checking
     /// Returns Some(...) if successful, None if insufficient funds
+    #[allow(dead_code)]
     pub fn try_add_road_at_positions(
         &mut self,
         start_pos: Position,
@@ -270,6 +285,7 @@ impl SimWorld {
 
     /// Remove an apartment from the world
     /// Returns the cars that were associated with the apartment (if any)
+    #[allow(dead_code)]
     pub fn remove_apartment(&mut self, apartment_id: ApartmentId) -> Vec<CarId> {
         let apartment = match self.apartments.remove(&apartment_id) {
             Some(a) => a,
@@ -279,17 +295,20 @@ impl SimWorld {
     }
 
     /// Remove a factory from the world
+    #[allow(dead_code)]
     pub fn remove_factory(&mut self, factory_id: FactoryId) {
         self.factories.remove(&factory_id);
     }
 
     /// Remove a shop from the world
+    #[allow(dead_code)]
     pub fn remove_shop(&mut self, shop_id: ShopId) {
         self.shops.remove(&shop_id);
     }
 
     /// Remove a road from the world
     /// Cars on the road will be despawned
+    #[allow(dead_code)]
     pub fn remove_road(&mut self, road_id: RoadId) -> Result<()> {
         let cars_on_road = self.road_network.remove_road(road_id)?;
 
@@ -304,6 +323,7 @@ impl SimWorld {
     /// Remove an intersection and all connected roads
     /// Cars on affected roads will be despawned
     /// Buildings at the intersection will be removed
+    #[allow(dead_code)]
     pub fn remove_intersection(&mut self, intersection_id: IntersectionId) -> Result<()> {
         // Remove any buildings at this intersection
         let apartments_to_remove: Vec<ApartmentId> = self
@@ -358,6 +378,7 @@ impl SimWorld {
 
     /// Remove a two-way road (both directions)
     /// Cars on either direction will be despawned
+    #[allow(dead_code)]
     pub fn remove_two_way_road(
         &mut self,
         intersection_a: IntersectionId,
@@ -383,78 +404,29 @@ impl SimWorld {
 
     /// Despawn a car and clean up references
     fn despawn_car(&mut self, car_id: CarId) {
-        // Get car info before removing
-        let car_info = self
-            .cars
-            .get(&car_id)
-            .map(|c| (c.origin_apartment, c.origin_factory));
-
-        self.cars.remove(&car_id);
-        self.road_network.remove_car_from_tracking(car_id);
-
-        if let Some((origin_apartment, origin_factory)) = car_info {
-            // Clear apartment car reference
-            if let Some(apartment_id) = origin_apartment {
-                if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                    for car_slot in &mut apartment.cars {
-                        if *car_slot == Some(car_id) {
-                            *car_slot = None;
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // Clear factory truck reference
-            if let Some(factory_id) = origin_factory {
-                if let Some(factory) = self.factories.get_mut(&factory_id) {
-                    if factory.truck == Some(car_id) {
-                        factory.truck = None;
-                    }
-                }
-            }
-        }
+        car_manager::despawn_car(
+            car_id,
+            &mut self.cars,
+            &mut self.road_network,
+            &mut self.apartments,
+            &mut self.factories,
+        );
     }
 
     /// Recalculate paths for all cars that might have invalid paths
+    #[allow(dead_code)]
     fn recalculate_car_paths(&mut self) {
-        let car_ids: Vec<CarId> = self.cars.keys().copied().collect();
-
-        for car_id in car_ids {
-            if let Some(car) = self.cars.get(&car_id) {
-                // Get the car's final destination
-                let destination = match car.path.last() {
-                    Some(dest) => *dest,
-                    None => continue, // No path to recalculate
-                };
-
-                // Get the current intersection the car is heading to
-                let current_target = match car.path.first() {
-                    Some(target) => *target,
-                    None => continue,
-                };
-
-                // Try to find a new path from current target to destination
-                let new_path = self.road_network.find_path(current_target, destination);
-
-                match new_path {
-                    Some(path) => {
-                        // Update the car's path
-                        if let Some(car) = self.cars.get_mut(&car_id) {
-                            car.path = std::iter::once(current_target).chain(path).collect();
-                        }
-                    }
-                    None => {
-                        // No valid path exists - despawn the car
-                        self.despawn_car(car_id);
-                    }
-                }
-            }
-        }
+        car_manager::recalculate_car_paths(
+            &mut self.cars,
+            &mut self.road_network,
+            &mut self.apartments,
+            &mut self.factories,
+        );
     }
 
     /// Split a road at a given position to create a new intersection
     /// Returns the new intersection ID and the IDs of the new roads
+    #[allow(dead_code)]
     pub fn split_road_at_position(
         &mut self,
         road_id: RoadId,
@@ -508,6 +480,7 @@ impl SimWorld {
     /// Dynamically add a two-way road between two positions
     /// If positions are close to existing intersections, reuse them
     /// If a position is close to an existing road, split that road
+    #[allow(dead_code)]
     pub fn add_road_at_positions(
         &mut self,
         start_pos: Position,
@@ -537,6 +510,7 @@ impl SimWorld {
 
     /// Find an existing intersection near a position, or create a new one
     /// If the position is near an existing road, split that road
+    #[allow(dead_code)]
     fn find_or_create_intersection(
         &mut self,
         position: Position,
@@ -580,117 +554,37 @@ impl SimWorld {
         origin_apartment: Option<ApartmentId>,
         origin_factory: Option<FactoryId>,
     ) -> Result<CarId> {
-        // Find connected roads from the starting intersection
-        let connected_roads = self
-            .road_network
-            .get_connected_roads(from_intersection)
-            .context("Starting intersection not found in road network")?;
-
-        if connected_roads.is_empty() {
-            anyhow::bail!("No roads connected to starting intersection");
-        }
-
-        // Find the path
-        let path = self
-            .road_network
-            .find_path(from_intersection, to_intersection)
-            .context("No path found to destination")?;
-
-        if path.is_empty() && from_intersection != to_intersection {
-            anyhow::bail!("Empty path but different start/end");
-        }
-
-        // Get the first road in the path
-        let first_target = path.first().copied().unwrap_or(to_intersection);
-        let road_id = self
-            .road_network
-            .find_road_between(from_intersection, first_target)
-            .context("No road to first path intersection")?;
-
-        let road = self
-            .road_network
-            .get_road(road_id)
-            .context("Road not found")?;
-
-        let road_angle = road.angle;
-
-        let start_pos = *self
-            .road_network
-            .get_intersection_position(from_intersection)
-            .context("Start intersection position not found")?;
-
         // Generate random speed (trucks are faster)
         let speed = match vehicle_type {
             VehicleType::Car => self.random_range(2.0..6.0),
             VehicleType::Truck => self.random_range(4.0..8.0),
         };
 
-        let id = CarId(self.next_sim_id());
-        let car = SimCar::new(
-            id,
-            speed,
-            road_id,
+        let car = car_manager::spawn_vehicle(
             from_intersection,
-            path,
-            start_pos,
-            road_angle,
+            to_intersection,
             vehicle_type,
             trip_type,
             origin_apartment,
             origin_factory,
-        );
-
-        // Register car on road
-        self.road_network.update_car_road_position(
-            id,
-            road_id,
-            OrderedFloat(0.0),
-            false,
-            None,
-            OrderedFloat(0.0),
+            &mut self.road_network,
+            &mut self.next_id,
+            speed,
         )?;
 
+        let id = car.id;
         self.cars.insert(id, car);
         Ok(id)
     }
 
     /// Update all cars in the simulation
     fn update_cars(&mut self, delta_secs: f32) -> Vec<(CarId, CarUpdateResult)> {
-        let mut results = Vec::new();
-
-        // Collect car IDs to avoid borrow issues
-        let car_ids: Vec<CarId> = self.cars.keys().copied().collect();
-
-        for car_id in car_ids {
-            // Get car mutably, update it, then process result
-            if let Some(mut car) = self.cars.remove(&car_id) {
-                let result =
-                    car.update(delta_secs, &mut self.road_network, &mut self.intersections);
-
-                match result {
-                    Ok(CarUpdateResult::Continue) => {
-                        self.cars.insert(car_id, car);
-                    }
-                    Ok(CarUpdateResult::Despawn) => {
-                        // Put car back temporarily so tick() can read its info
-                        self.cars.insert(car_id, car);
-                        results.push((car_id, CarUpdateResult::Despawn));
-                    }
-                    Ok(CarUpdateResult::ArrivedAtDestination(dest)) => {
-                        // Put car back temporarily so tick() can read its info
-                        self.cars.insert(car_id, car);
-                        results.push((car_id, CarUpdateResult::ArrivedAtDestination(dest)));
-                    }
-                    Err(_) => {
-                        // Put car back temporarily so tick() can read its info
-                        self.cars.insert(car_id, car);
-                        results.push((car_id, CarUpdateResult::Despawn));
-                    }
-                }
-            }
-        }
-
-        results
+        car_manager::update_cars(
+            delta_secs,
+            &mut self.cars,
+            &mut self.road_network,
+            &mut self.intersections,
+        )
     }
 
     /// Update all intersections
@@ -707,10 +601,7 @@ impl SimWorld {
 
     /// Update all factories
     /// Returns (workers_done_apartment_ids, trucks_to_dispatch)
-    fn update_factories(
-        &mut self,
-        delta_secs: f32,
-    ) -> (Vec<(FactoryId, ApartmentId)>, Vec<(FactoryId, IntersectionId)>) {
+    fn update_factories(&mut self, delta_secs: f32) -> (WorkersDone, TrucksToDispatch) {
         let mut workers_done = Vec::new();
         let mut trucks_to_dispatch = Vec::new();
 
@@ -1147,6 +1038,7 @@ impl SimWorld {
     }
 
     /// Create a default test world with some roads and buildings
+    #[allow(dead_code)]
     pub fn create_test_world() -> Self {
         Self::build_test_world(SimWorld::new())
     }
@@ -1157,6 +1049,7 @@ impl SimWorld {
     }
 
     /// Internal helper to build the test world structure
+    #[allow(clippy::needless_range_loop)]
     pub fn build_test_world(mut world: SimWorld) -> Self {
         // Create a 3x3 grid of intersections (main roads)
         let spacing = 20.0;
