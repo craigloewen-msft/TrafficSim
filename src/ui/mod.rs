@@ -12,7 +12,7 @@ mod world;
 
 use bevy::prelude::*;
 
-pub use components::{EntityMappings, SimWorldResource};
+pub use components::{EntityMappings, SimWorldResource, UI_STARTING_BUDGET};
 
 use building::{
     handle_build_buttons, handle_build_keyboard, handle_placement_click, setup_building_ui,
@@ -20,7 +20,7 @@ use building::{
 };
 use components::*;
 use input::{handle_camera_mouse, handle_camera_movement, handle_input};
-use spawner::spawn_initial_visuals;
+use spawner::{spawn_initial_visuals, HouseVisualAssets};
 use sync::{
     sync_cars, tick_simulation, update_factory_delivery_indicators, update_factory_indicators,
     update_global_demand_text, update_house_indicators, update_shop_indicators,
@@ -36,6 +36,7 @@ impl Plugin for TrafficSimUIPlugin {
             .init_resource::<EntityMappings>()
             .init_resource::<CameraSettings>()
             .init_resource::<BuildingState>()
+            .init_resource::<HouseVisualAssets>()
             .add_systems(
                 Startup,
                 (

@@ -4,12 +4,12 @@
 //! without any Bevy dependencies.
 
 use anyhow::{Context, Result};
+use log::warn;
 use ordered_float::OrderedFloat;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
 use rand::Rng;
 use rand::SeedableRng;
-use log::warn;
 use std::collections::HashMap;
 
 use super::building::{SimFactory, SimHouse, SimShop};
@@ -709,11 +709,8 @@ impl SimWorld {
         let mut trucks_to_dispatch = Vec::new();
 
         // Get all shops - trucks always dispatch if deliveries are ready
-        let shop_intersections: Vec<IntersectionId> = self
-            .shops
-            .values()
-            .map(|s| s.intersection_id)
-            .collect();
+        let shop_intersections: Vec<IntersectionId> =
+            self.shops.values().map(|s| s.intersection_id).collect();
 
         // Collect factory IDs to avoid borrow issues
         let factory_ids: Vec<FactoryId> = self.factories.keys().copied().collect();
@@ -779,11 +776,11 @@ impl SimWorld {
             }
 
             // Choose random factory
-            let (_factory_id, factory_intersection) =
-                match self.choose_random(&factories_accepting) {
-                    Some(&(fid, fi)) => (fid, fi),
-                    None => continue,
-                };
+            let (_factory_id, factory_intersection) = match self.choose_random(&factories_accepting)
+            {
+                Some(&(fid, fi)) => (fid, fi),
+                None => continue,
+            };
 
             let house_intersection = self.houses.get(&house_id).map(|h| h.intersection_id);
             let house_intersection = match house_intersection {
@@ -920,7 +917,7 @@ impl SimWorld {
                                         destination_factory = Some(*factory_id);
                                     }
                                 }
-                                
+
                                 if worker_accepted {
                                     // Remove car from tracking while at work (will respawn when returning home)
                                     self.road_network.remove_car_from_tracking(car_id);
@@ -928,7 +925,8 @@ impl SimWorld {
                                 } else {
                                     // Factory rejected worker (truck out or full), send them back home
                                     if let Some(house_id) = origin_house {
-                                        let house_intersection = self.houses.get(&house_id).map(|h| h.intersection_id);
+                                        let house_intersection =
+                                            self.houses.get(&house_id).map(|h| h.intersection_id);
                                         if let Some(house_intersection) = house_intersection {
                                             // Spawn car returning home
                                             let _ = self.spawn_vehicle(
@@ -1200,10 +1198,7 @@ impl SimWorld {
         // Shop status
         println!("--- Shops ---");
         for shop in self.shops.values() {
-            println!(
-                "  Shop {:?}: deliveries={}",
-                shop.id.0, shop.cars_received
-            );
+            println!("  Shop {:?}: deliveries={}", shop.id.0, shop.cars_received);
         }
 
         // Active cars
@@ -1257,8 +1252,7 @@ impl SimWorld {
             .count();
 
         // Count houses with cars out (busy)
-        let houses_busy: usize =
-            self.houses.values().filter(|h| h.car.is_some()).count();
+        let houses_busy: usize = self.houses.values().filter(|h| h.car.is_some()).count();
 
         // Simplified: factories waiting are those that can't accept workers (truck is out)
         let factories_waiting = total_factories - factories_accepting;

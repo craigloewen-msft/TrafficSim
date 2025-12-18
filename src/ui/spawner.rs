@@ -3,11 +3,19 @@
 use bevy::prelude::*;
 
 use super::components::{
-    DemandIndicator, DeliveryIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink,
+    DeliveryIndicator, DemandIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink,
     RoadLink, ShopLink, SimSynced, SimWorldResource,
 };
 use crate::simulation::SimRoadNetwork;
-use crate::simulation::{FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimRoad};
+use crate::simulation::{
+    FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimRoad, COMMUTE_HEALTHY_DISTANCE,
+};
+
+#[derive(Resource, Default)]
+pub struct HouseVisualAssets {
+    commute_radius_mesh: Option<Handle<Mesh>>,
+    commute_radius_material: Option<Handle<StandardMaterial>>,
+}
 
 /// System to create initial visual entities from simulation state
 pub fn spawn_initial_visuals(
@@ -16,6 +24,7 @@ pub fn spawn_initial_visuals(
     mut materials: ResMut<Assets<StandardMaterial>>,
     sim_world: Res<SimWorldResource>,
     mut mappings: ResMut<EntityMappings>,
+    mut house_assets: ResMut<HouseVisualAssets>,
 ) {
     let world = &sim_world.0;
 
@@ -39,6 +48,7 @@ pub fn spawn_initial_visuals(
         &mut materials,
         world,
         &mut mappings,
+        &mut house_assets,
     );
     spawn_factories(
         &mut commands,
@@ -277,6 +287,7 @@ fn spawn_houses(
     materials: &mut ResMut<Assets<StandardMaterial>>,
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
+    house_assets: &mut HouseVisualAssets,
 ) {
     for (id, house) in &world.houses {
         if let Some(intersection) = world.intersections.get(&house.intersection_id) {
@@ -287,6 +298,7 @@ fn spawn_houses(
                 *id,
                 &intersection.position,
                 mappings,
+                house_assets,
             );
         }
     }
@@ -300,9 +312,26 @@ pub fn spawn_house_visual(
     id: HouseId,
     pos: &Position,
     mappings: &mut ResMut<EntityMappings>,
+    house_assets: &mut HouseVisualAssets,
 ) {
     const HOUSE_SIZE: f32 = 1.0;
+    const COMMUTE_RADIUS_HEIGHT: f32 = 0.02;
     let house_color = Color::srgb(0.7, 0.6, 0.4);
+    let commute_radius_mesh = house_assets
+        .commute_radius_mesh
+        .get_or_insert_with(|| meshes.add(Annulus::new(COMMUTE_HEALTHY_DISTANCE - 0.05, COMMUTE_HEALTHY_DISTANCE)))
+        .clone();
+    let commute_radius_material = house_assets
+        .commute_radius_material
+        .get_or_insert_with(|| {
+            materials.add(StandardMaterial {
+                base_color: Color::srgba(1.0, 0.8, 0.2, 0.3),
+                alpha_mode: AlphaMode::Blend,
+                unlit: true,
+                ..default()
+            })
+        })
+        .clone();
 
     let entity = commands
         .spawn((
@@ -314,6 +343,17 @@ pub fn spawn_house_visual(
         ))
         .id();
     mappings.houses.insert(id, entity);
+
+    // Add commute penalty radius visualization
+    let commute_radius = commands
+        .spawn((
+            Mesh3d(commute_radius_mesh),
+            MeshMaterial3d(commute_radius_material),
+            Transform::from_translation(Vec3::new(0.0, COMMUTE_RADIUS_HEIGHT, 0.0))
+                .with_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+        ))
+        .id();
+    commands.entity(entity).add_child(commute_radius);
 
     // Add demand indicator
     let indicator = commands
@@ -394,9 +434,9 @@ pub fn spawn_factory_visual(
                 Mesh3d(meshes.add(Sphere::new(DELIVERY_INDICATOR_RADIUS))),
                 MeshMaterial3d(materials.add(Color::srgb(0.3, 0.3, 0.3))), // Dark gray by default
                 Transform::from_translation(Vec3::new(
-                    DELIVERY_INDICATOR_X_OFFSET, 
-                    DELIVERY_INDICATOR_BASE_Y + i as f32 * DELIVERY_INDICATOR_Y_SPACING, 
-                    0.0
+                    DELIVERY_INDICATOR_X_OFFSET,
+                    DELIVERY_INDICATOR_BASE_Y + i as f32 * DELIVERY_INDICATOR_Y_SPACING,
+                    0.0,
                 )),
             ))
             .id();

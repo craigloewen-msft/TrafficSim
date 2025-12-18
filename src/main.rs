@@ -37,7 +37,7 @@ struct Cli {
 
 fn main() {
     let cli = Cli::parse();
-    
+
     if cli.ui {
         #[cfg(feature = "ui")]
         {
@@ -56,7 +56,7 @@ fn main() {
         println!("(Note: Requires UI feature enabled)");
         println!("===========================================");
         println!();
-        
+
         if cli.cli_display {
             run_headless_with_display(cli.ticks, cli.delta, cli.seed);
         } else {
@@ -112,35 +112,40 @@ fn run_simulation_validation(
             if world.road_network.intersection_count() != initial_intersections {
                 errors.push(format!(
                     "Tick {}: Intersection count changed from {} to {}",
-                    tick, initial_intersections,
+                    tick,
+                    initial_intersections,
                     world.road_network.intersection_count()
                 ));
             }
             if world.road_network.road_count() != initial_roads {
                 errors.push(format!(
                     "Tick {}: Road count changed from {} to {}",
-                    tick, initial_roads,
+                    tick,
+                    initial_roads,
                     world.road_network.road_count()
                 ));
             }
             if world.houses.len() != initial_houses {
                 errors.push(format!(
                     "Tick {}: House count changed from {} to {}",
-                    tick, initial_houses,
+                    tick,
+                    initial_houses,
                     world.houses.len()
                 ));
             }
             if world.factories.len() != initial_factories {
                 errors.push(format!(
                     "Tick {}: Factory count changed from {} to {}",
-                    tick, initial_factories,
+                    tick,
+                    initial_factories,
                     world.factories.len()
                 ));
             }
             if world.shops.len() != initial_shops {
                 errors.push(format!(
                     "Tick {}: Shop count changed from {} to {}",
-                    tick, initial_shops,
+                    tick,
+                    initial_shops,
                     world.shops.len()
                 ));
             }
@@ -184,7 +189,12 @@ fn run_simulation_validation(
         validation_passed = false;
     }
 
-    (validation_passed, total_deliveries, max_cars_observed, errors)
+    (
+        validation_passed,
+        total_deliveries,
+        max_cars_observed,
+        errors,
+    )
 }
 
 /// Print validation results in a formatted manner
@@ -216,7 +226,9 @@ fn print_validation_results_with_mode(
         println!("PASS: Road network integrity maintained");
     }
 
-    if errors.iter().any(|e| e.contains("Building") || e.contains("House") || e.contains("Factory") || e.contains("Shop")) {
+    if errors.iter().any(|e| {
+        e.contains("Building") || e.contains("House") || e.contains("Factory") || e.contains("Shop")
+    }) {
         println!("FAIL: Buildings were unexpectedly modified");
     } else {
         println!("PASS: Building integrity maintained");
@@ -288,7 +300,7 @@ fn run_headless(ticks: u32, delta: f32, seed: u64) {
 /// Run the simulation in headless mode with CLI display
 ///
 /// This mode runs the simulation for a fixed number of ticks and prints
-/// periodic summaries to the console with animated map display. It's useful 
+/// periodic summaries to the console with animated map display. It's useful
 /// for visually observing the simulation logic without the overhead of the UI.
 ///
 /// # Arguments
@@ -353,6 +365,7 @@ fn run_headless_with_display(ticks: u32, delta: f32, seed: u64) {
 /// - Earn money from successful deliveries
 /// - Reach the goal to win the game!
 fn run_with_ui() {
+    use crate::ui::UI_STARTING_BUDGET;
     use bevy::log::LogPlugin;
     use bevy::prelude::*;
 
@@ -364,9 +377,10 @@ fn run_with_ui() {
     println!("  Complete 50 shop deliveries OR earn $5000");
     println!();
     println!("💰 ECONOMICS:");
-    println!("  Starting Budget: $2000");
+    println!("  Starting Budget: ${} (UI sandbox)", UI_STARTING_BUDGET);
     println!("  Road: $50 | House: $200 | Factory: $500 | Shop: $300");
     println!("  Earn $10 per worker trip, $50 per shop delivery");
+    println!("  Start with a blank map so you can design your own layout");
     println!();
     println!("🕹️ CONTROLS:");
     println!("  Camera:");
@@ -429,11 +443,7 @@ fn run_with_ui() {
 /// * `max_cars_observed` - Maximum number of concurrent cars
 /// * `errors` - List of error messages (if any)
 #[cfg(test)]
-fn run_simulation_test(
-    ticks: u32,
-    delta: f32,
-    seed: u64,
-) -> (bool, usize, usize, Vec<String>) {
+fn run_simulation_test(ticks: u32, delta: f32, seed: u64) -> (bool, usize, usize, Vec<String>) {
     println!("Running traffic simulation in TEST mode...");
     println!("Ticks: {}, Delta: {}s, Seed: {}", ticks, delta, seed);
     println!();
@@ -449,7 +459,12 @@ fn run_simulation_test(
         &errors,
     );
 
-    (validation_passed, total_deliveries, max_cars_observed, errors)
+    (
+        validation_passed,
+        total_deliveries,
+        max_cars_observed,
+        errors,
+    )
 }
 
 /// Print test validation results (similar to print_validation_results but for tests)
@@ -512,23 +527,36 @@ mod tests {
     #[test]
     fn test_factory_delivery_logic() {
         use simulation::SimWorld;
-        
+
         println!("Testing factory delivery logic...");
-        
+
         // Create a simple test world
         let mut world = SimWorld::create_test_world();
-        
+
         // Get a factory reference
-        let factory_id = *world.factories.keys().next().expect("No factories in test world");
-        
+        let factory_id = *world
+            .factories
+            .keys()
+            .next()
+            .expect("No factories in test world");
+
         // Initial state: truck should be home, deliveries should be 0
         {
             let factory = world.factories.get(&factory_id).unwrap();
-            assert!(factory.truck.is_none(), "Factory should start with truck at home");
-            assert_eq!(factory.deliveries_ready, 0, "Factory should start with 0 deliveries");
-            assert_eq!(factory.max_deliveries, 2, "Factory max deliveries should be 2");
+            assert!(
+                factory.truck.is_none(),
+                "Factory should start with truck at home"
+            );
+            assert_eq!(
+                factory.deliveries_ready, 0,
+                "Factory should start with 0 deliveries"
+            );
+            assert_eq!(
+                factory.max_deliveries, 2,
+                "Factory max deliveries should be 2"
+            );
         }
-        
+
         // Simulate workers completing work to build up deliveries
         // We'll directly manipulate the factory state to test the logic
         {
@@ -536,43 +564,58 @@ mod tests {
             // Simulate 2 workers completing work (max deliveries)
             factory.deliveries_ready = 2;
         }
-        
+
         // Verify factory still accepts workers when truck is home (deliveries count doesn't matter)
         {
             let factory = world.factories.get(&factory_id).unwrap();
-            assert_eq!(factory.deliveries_ready, 2, "Factory should have 2 deliveries ready");
-            
+            assert_eq!(
+                factory.deliveries_ready, 2,
+                "Factory should have 2 deliveries ready"
+            );
+
             // With simplified logic, factory SHOULD accept workers even when full, as long as truck is home
-            assert!(factory.can_accept_workers(), "Factory should accept workers when truck is home (even with 2/2 deliveries)");
+            assert!(
+                factory.can_accept_workers(),
+                "Factory should accept workers when truck is home (even with 2/2 deliveries)"
+            );
         }
-        
+
         // Take a delivery (simulate truck dispatch)
         {
             let factory = world.factories.get_mut(&factory_id).unwrap();
             let taken = factory.take_delivery();
             assert!(taken, "Should be able to take a delivery");
-            assert_eq!(factory.deliveries_ready, 1, "Should have 1 delivery remaining");
+            assert_eq!(
+                factory.deliveries_ready, 1,
+                "Should have 1 delivery remaining"
+            );
         }
-        
+
         // Factory should still be able to accept workers (truck still home)
         {
             let factory = world.factories.get(&factory_id).unwrap();
-            assert!(factory.can_accept_workers(), "Factory should accept workers when truck is home");
+            assert!(
+                factory.can_accept_workers(),
+                "Factory should accept workers when truck is home"
+            );
         }
-        
+
         // Simulate truck being out
         {
             let factory = world.factories.get_mut(&factory_id).unwrap();
             factory.truck = Some(simulation::CarId(simulation::SimId(999)));
         }
-        
+
         // Verify factory won't accept workers when truck is out
         {
             let factory = world.factories.get(&factory_id).unwrap();
             assert!(factory.truck.is_some(), "Factory truck should be out");
-            assert!(!factory.can_accept_workers(), "Factory should not accept workers when truck is out");
+            assert!(
+                !factory.can_accept_workers(),
+                "Factory should not accept workers when truck is out"
+            );
         }
-        
+
         println!("FACTORY DELIVERY LOGIC TEST PASSED");
     }
 }
