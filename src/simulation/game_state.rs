@@ -5,7 +5,7 @@
 
 /// Building costs for the game
 pub const COST_ROAD: i32 = 50;
-pub const COST_HOUSE: i32 = 200;
+pub const COST_APARTMENT: i32 = 200;
 pub const COST_FACTORY: i32 = 500;
 pub const COST_SHOP: i32 = 300;
 

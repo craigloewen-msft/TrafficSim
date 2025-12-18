@@ -8,8 +8,8 @@ use super::components::{
     SimWorldResource,
 };
 use super::spawner::{
-    spawn_factory_visual, spawn_house_visual, spawn_intersection_visual, spawn_road_visual,
-    spawn_shop_visual, HouseVisualAssets,
+    spawn_factory_visual, spawn_apartment_visual, spawn_intersection_visual, spawn_road_visual,
+    spawn_shop_visual, ApartmentVisualAssets,
 };
 use crate::simulation::Position;
 use crate::ui::components::GlobalDemandText;
@@ -117,11 +117,11 @@ pub fn setup_building_ui(mut commands: Commands) {
                 Color::srgb(0.8, 0.4, 0.6),
             );
 
-            // Houses with cars out
+            // Apartments with cars out
             spawn_demand_text(
                 parent,
-                GlobalDemandText::HousesWaiting,
-                "Houses Busy: 0/0",
+                GlobalDemandText::ApartmentsWaiting,
+                "Apartments Busy: 0/0",
                 Color::srgb(0.7, 0.6, 0.4),
             );
         });
@@ -146,11 +146,11 @@ pub fn setup_building_ui(mut commands: Commands) {
                 "Road [1] - $50",
                 Color::srgb(0.3, 0.3, 0.3),
             );
-            // House button
+            // Apartment button
             spawn_build_button(
                 parent,
-                BuildingMode::House,
-                "House [2] - $200",
+                BuildingMode::Apartment,
+                "Apartment [2] - $200",
                 Color::srgb(0.7, 0.6, 0.4),
             );
             // Factory button
@@ -257,7 +257,7 @@ pub fn handle_build_buttons(
         // Update background to show selected state
         let base_color = match button.0 {
             BuildingMode::Road => Color::srgb(0.3, 0.3, 0.3),
-            BuildingMode::House => Color::srgb(0.7, 0.6, 0.4),
+            BuildingMode::Apartment => Color::srgb(0.7, 0.6, 0.4),
             BuildingMode::Factory => Color::srgb(0.5, 0.5, 0.7),
             BuildingMode::Shop => Color::srgb(0.8, 0.4, 0.6),
             BuildingMode::None => Color::srgb(0.5, 0.5, 0.5),
@@ -291,10 +291,10 @@ pub fn handle_build_keyboard(
         building_state.road_start = None;
     }
     if keyboard.just_pressed(KeyCode::Digit2) {
-        building_state.mode = if building_state.mode == BuildingMode::House {
+        building_state.mode = if building_state.mode == BuildingMode::Apartment {
             BuildingMode::None
         } else {
-            BuildingMode::House
+            BuildingMode::Apartment
         };
         building_state.road_start = None;
     }
@@ -464,7 +464,7 @@ pub fn update_ghost_preview(
                 }
             }
         }
-        BuildingMode::House => {
+        BuildingMode::Apartment => {
             commands.spawn((
                 GhostPreview,
                 Mesh3d(meshes.add(Cuboid::new(1.0, 1.0, 1.0))),
@@ -513,7 +513,7 @@ pub fn handle_placement_click(
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
     mut mappings: ResMut<EntityMappings>,
-    mut house_assets: ResMut<HouseVisualAssets>,
+    mut apartment_assets: ResMut<ApartmentVisualAssets>,
     // Check if mouse is over UI
     interaction_query: Query<&Interaction, With<Button>>,
 ) {
@@ -613,7 +613,7 @@ pub fn handle_placement_click(
                 building_state.road_start = Some(pos);
             }
         }
-        BuildingMode::House | BuildingMode::Factory | BuildingMode::Shop => {
+        BuildingMode::Apartment | BuildingMode::Factory | BuildingMode::Shop => {
             // For buildings, find or create an intersection at this position
             let snap_distance = building_state.snap_distance;
             let intersection_id =
@@ -648,7 +648,7 @@ pub fn handle_placement_click(
                 &mut meshes,
                 &mut materials,
                 &mut mappings,
-                &mut house_assets,
+                &mut apartment_assets,
             );
         }
         BuildingMode::None => {}
@@ -664,7 +664,7 @@ fn spawn_building_at_intersection(
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     mappings: &mut ResMut<EntityMappings>,
-    house_assets: &mut HouseVisualAssets,
+    apartment_assets: &mut ApartmentVisualAssets,
 ) {
     let position = match world.intersections.get(&intersection_id) {
         Some(intersection) => intersection.position,
@@ -672,26 +672,26 @@ fn spawn_building_at_intersection(
     };
 
     match building_mode {
-        BuildingMode::House => {
-            let maybe_house_id = if world.game_state.is_some() {
-                world.try_add_house(intersection_id)
+        BuildingMode::Apartment => {
+            let maybe_apartment_id = if world.game_state.is_some() {
+                world.try_add_apartment(intersection_id)
             } else {
-                Some(world.add_house(intersection_id))
+                Some(world.add_apartment(intersection_id))
             };
 
-            if let Some(house_id) = maybe_house_id {
-                spawn_house_visual(
+            if let Some(apartment_id) = maybe_apartment_id {
+                spawn_apartment_visual(
                     commands,
                     meshes,
                     materials,
-                    house_id,
+                    apartment_id,
                     &position,
                     mappings,
-                    house_assets,
+                    apartment_assets,
                 );
-                bevy::log::info!("Created house at {:?}", intersection_id);
+                bevy::log::info!("Created apartment at {:?}", intersection_id);
             } else {
-                bevy::log::warn!("Insufficient funds to create house");
+                bevy::log::warn!("Insufficient funds to create apartment");
             }
         }
         BuildingMode::Factory => {

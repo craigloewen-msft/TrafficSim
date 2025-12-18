@@ -3,16 +3,16 @@
 use bevy::prelude::*;
 
 use super::components::{
-    DeliveryIndicator, DemandIndicator, EntityMappings, FactoryLink, HouseLink, IntersectionLink,
+    DeliveryIndicator, DemandIndicator, EntityMappings, FactoryLink, ApartmentLink, IntersectionLink,
     RoadLink, ShopLink, SimSynced, SimWorldResource,
 };
 use crate::simulation::SimRoadNetwork;
 use crate::simulation::{
-    FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimRoad, COMMUTE_HEALTHY_DISTANCE,
+    FactoryId, ApartmentId, IntersectionId, Position, RoadId, ShopId, SimRoad, COMMUTE_HEALTHY_DISTANCE,
 };
 
 #[derive(Resource, Default)]
-pub struct HouseVisualAssets {
+pub struct ApartmentVisualAssets {
     commute_radius_mesh: Option<Handle<Mesh>>,
     commute_radius_material: Option<Handle<StandardMaterial>>,
 }
@@ -24,7 +24,7 @@ pub fn spawn_initial_visuals(
     mut materials: ResMut<Assets<StandardMaterial>>,
     sim_world: Res<SimWorldResource>,
     mut mappings: ResMut<EntityMappings>,
-    mut house_assets: ResMut<HouseVisualAssets>,
+    mut apartment_assets: ResMut<ApartmentVisualAssets>,
 ) {
     let world = &sim_world.0;
 
@@ -42,13 +42,13 @@ pub fn spawn_initial_visuals(
         world,
         &mut mappings,
     );
-    spawn_houses(
+    spawn_apartments(
         &mut commands,
         &mut meshes,
         &mut materials,
         world,
         &mut mappings,
-        &mut house_assets,
+        &mut apartment_assets,
     );
     spawn_factories(
         &mut commands,
@@ -281,47 +281,47 @@ fn spawn_direction_arrows(
     }
 }
 
-fn spawn_houses(
+fn spawn_apartments(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
     world: &crate::simulation::SimWorld,
     mappings: &mut ResMut<EntityMappings>,
-    house_assets: &mut HouseVisualAssets,
+    apartment_assets: &mut ApartmentVisualAssets,
 ) {
-    for (id, house) in &world.houses {
-        if let Some(intersection) = world.intersections.get(&house.intersection_id) {
-            spawn_house_visual(
+    for (id, apartment) in &world.apartments {
+        if let Some(intersection) = world.intersections.get(&apartment.intersection_id) {
+            spawn_apartment_visual(
                 commands,
                 meshes,
                 materials,
                 *id,
                 &intersection.position,
                 mappings,
-                house_assets,
+                apartment_assets,
             );
         }
     }
 }
 
-/// Spawn a single house visual
-pub fn spawn_house_visual(
+/// Spawn a single apartment visual
+pub fn spawn_apartment_visual(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
     materials: &mut ResMut<Assets<StandardMaterial>>,
-    id: HouseId,
+    id: ApartmentId,
     pos: &Position,
     mappings: &mut ResMut<EntityMappings>,
-    house_assets: &mut HouseVisualAssets,
+    apartment_assets: &mut ApartmentVisualAssets,
 ) {
-    const HOUSE_SIZE: f32 = 1.0;
+    const APARTMENT_SIZE: f32 = 1.0;
     const COMMUTE_RADIUS_HEIGHT: f32 = 0.02;
-    let house_color = Color::srgb(0.7, 0.6, 0.4);
-    let commute_radius_mesh = house_assets
+    let apartment_color = Color::srgb(0.7, 0.6, 0.4);
+    let commute_radius_mesh = apartment_assets
         .commute_radius_mesh
         .get_or_insert_with(|| meshes.add(Annulus::new(COMMUTE_HEALTHY_DISTANCE - 0.05, COMMUTE_HEALTHY_DISTANCE)))
         .clone();
-    let commute_radius_material = house_assets
+    let commute_radius_material = apartment_assets
         .commute_radius_material
         .get_or_insert_with(|| {
             materials.add(StandardMaterial {
@@ -336,13 +336,13 @@ pub fn spawn_house_visual(
     let entity = commands
         .spawn((
             SimSynced,
-            HouseLink(id),
-            Mesh3d(meshes.add(Cuboid::new(HOUSE_SIZE, HOUSE_SIZE, HOUSE_SIZE))),
-            MeshMaterial3d(materials.add(house_color)),
-            Transform::from_translation(Vec3::new(pos.x, HOUSE_SIZE / 2.0, pos.z)),
+            ApartmentLink(id),
+            Mesh3d(meshes.add(Cuboid::new(APARTMENT_SIZE, APARTMENT_SIZE, APARTMENT_SIZE))),
+            MeshMaterial3d(materials.add(apartment_color)),
+            Transform::from_translation(Vec3::new(pos.x, APARTMENT_SIZE / 2.0, pos.z)),
         ))
         .id();
-    mappings.houses.insert(id, entity);
+    mappings.apartments.insert(id, entity);
 
     // Add commute penalty radius visualization
     let commute_radius = commands

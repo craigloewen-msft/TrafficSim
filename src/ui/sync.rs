@@ -3,7 +3,7 @@
 use bevy::prelude::*;
 
 use super::components::{
-    CarLink, DeliveryIndicator, DemandIndicator, EntityMappings, FactoryLink, HouseLink, ShopLink,
+    CarLink, DeliveryIndicator, DemandIndicator, EntityMappings, FactoryLink, ApartmentLink, ShopLink,
     SimSynced, SimWorldResource,
 };
 use crate::{
@@ -100,20 +100,20 @@ pub fn update_factory_indicators(
     }
 }
 
-/// System to update house demand indicators
-pub fn update_house_indicators(
+/// System to update apartment demand indicators
+pub fn update_apartment_indicators(
     sim_world: Res<SimWorldResource>,
-    house_query: Query<(&HouseLink, &Children)>,
+    apartment_query: Query<(&ApartmentLink, &Children)>,
     mut indicator_query: Query<&mut MeshMaterial3d<StandardMaterial>, With<DemandIndicator>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    for (link, children) in house_query.iter() {
-        if let Some(house) = sim_world.0.houses.get(&link.0) {
+    for (link, children) in apartment_query.iter() {
+        if let Some(apartment) = sim_world.0.apartments.get(&link.0) {
             for child in children.iter() {
                 if let Ok(material_handle) = indicator_query.get_mut(child) {
                     if let Some(material) = materials.get_mut(&material_handle.0) {
-                        // Red if car is out (busy), green if car is home (available)
-                        if house.car.is_some() {
+                        // Red if any car is out (busy), green if all cars are home (available)
+                        if apartment.cars.iter().any(|c| c.is_some()) {
                             material.base_color = Color::srgb(1.0, 0.0, 0.0); // Red - busy
                         } else {
                             material.base_color = Color::srgb(0.0, 1.0, 0.0); // Green - available
@@ -164,10 +164,10 @@ pub fn update_global_demand_text(
             GlobalDemandText::ShopsWaiting => {
                 **text = format!("Shops: {}", demand.total_shops);
             }
-            GlobalDemandText::HousesWaiting => {
+            GlobalDemandText::ApartmentsWaiting => {
                 **text = format!(
-                    "Houses Busy: {}/{}",
-                    demand.houses_waiting, demand.total_houses
+                    "Apartments Busy: {}/{}",
+                    demand.apartments_waiting, demand.total_apartments
                 );
             }
             GlobalDemandText::Money => {

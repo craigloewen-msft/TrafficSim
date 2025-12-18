@@ -4,7 +4,7 @@ use bevy::prelude::*;
 use std::collections::HashMap;
 
 use crate::simulation::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimWorld,
+    CarId, FactoryId, ApartmentId, IntersectionId, Position, RoadId, ShopId, SimWorld,
 };
 
 /// Starting budget for the interactive UI sandbox
@@ -69,9 +69,9 @@ pub struct RoadLink(pub RoadId);
 #[derive(Component)]
 pub struct CarLink(pub CarId);
 
-/// Links a Bevy entity to a simulation house
+/// Links a Bevy entity to a simulation apartment
 #[derive(Component)]
-pub struct HouseLink(pub HouseId);
+pub struct ApartmentLink(pub ApartmentId);
 
 /// Links a Bevy entity to a simulation factory
 #[derive(Component)]
@@ -95,7 +95,7 @@ pub struct EntityMappings {
     pub intersections: HashMap<IntersectionId, Entity>,
     pub roads: HashMap<RoadId, Entity>,
     pub cars: HashMap<CarId, Entity>,
-    pub houses: HashMap<HouseId, Entity>,
+    pub apartments: HashMap<ApartmentId, Entity>,
     pub factories: HashMap<FactoryId, Entity>,
     pub shops: HashMap<ShopId, Entity>,
 }
@@ -106,7 +106,7 @@ pub enum BuildingMode {
     #[default]
     None,
     Road,
-    House,
+    Apartment,
     Factory,
     Shop,
 }
@@ -153,8 +153,8 @@ pub enum GlobalDemandText {
     FactoriesWaiting,
     /// Shops (always passive)
     ShopsWaiting,
-    /// Houses with cars out (busy)
-    HousesWaiting,
+    /// Apartments with cars out (busy)
+    ApartmentsWaiting,
     /// Player's money
     Money,
     /// Worker trips completed

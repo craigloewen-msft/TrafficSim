@@ -3,7 +3,7 @@
 //! This test validates that the game mechanics work correctly
 
 use traffic_sim::simulation::{
-    GameState, Position, SimWorld, COMMUTE_HEALTHY_DISTANCE, COST_HOUSE, COST_ROAD,
+    GameState, Position, SimWorld, COMMUTE_HEALTHY_DISTANCE, COST_APARTMENT, COST_ROAD,
     GOAL_DELIVERIES, GOAL_MONEY, REVENUE_SHOP_DELIVERY, REVENUE_WORKER_DELIVERY,
     SHORT_COMMUTE_PENALTY, STARTING_BUDGET,
 };
@@ -71,12 +71,12 @@ fn test_game_world_building_costs() {
 
     let initial_money = world.game_state.as_ref().unwrap().money;
 
-    // Try to add a house (should succeed and cost money)
-    let maybe_house_id = world.try_add_house(intersection_id);
-    assert!(maybe_house_id.is_some());
+    // Try to add an apartment (should succeed and cost money)
+    let maybe_apartment_id = world.try_add_apartment(intersection_id);
+    assert!(maybe_apartment_id.is_some());
     assert_eq!(
         world.game_state.as_ref().unwrap().money,
-        initial_money - COST_HOUSE
+        initial_money - COST_APARTMENT
     );
 }
 
@@ -92,7 +92,7 @@ fn test_game_world_building_costs_block_when_broke() {
     let start = world.add_intersection(first);
     let end = world.add_intersection(second);
 
-    assert!(world.try_add_house(start).is_none());
+    assert!(world.try_add_apartment(start).is_none());
     assert!(world
         .try_add_two_way_road(start, end)
         .expect("road creation should not error")

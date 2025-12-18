@@ -12,13 +12,13 @@ use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
 
-use super::building::{SimFactory, SimHouse, SimShop};
+use super::building::{SimFactory, SimApartment, SimShop};
 use super::car::{CarUpdateResult, SimCar};
-use super::game_state::{GameState, COST_FACTORY, COST_HOUSE, COST_ROAD, COST_SHOP};
+use super::game_state::{GameState, COST_FACTORY, COST_APARTMENT, COST_ROAD, COST_SHOP};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
 use super::types::{
-    CarId, FactoryId, HouseId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
+    CarId, FactoryId, ApartmentId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad, TripType,
     VehicleType,
 };
 
@@ -36,10 +36,10 @@ pub struct GlobalDemand {
     pub shops_waiting: usize,
     /// Total number of shops
     pub total_shops: usize,
-    /// Number of houses with cars out (busy)
-    pub houses_waiting: usize,
-    /// Total number of houses
-    pub total_houses: usize,
+    /// Number of apartments with cars out (busy)
+    pub apartments_waiting: usize,
+    /// Total number of apartments
+    pub total_apartments: usize,
 }
 
 /// The main simulation world
@@ -53,8 +53,8 @@ pub struct SimWorld {
     /// All cars
     pub cars: HashMap<CarId, SimCar>,
 
-    /// All houses
-    pub houses: HashMap<HouseId, SimHouse>,
+    /// All apartments
+    pub apartments: HashMap<ApartmentId, SimApartment>,
 
     /// All factories
     pub factories: HashMap<FactoryId, SimFactory>,
@@ -87,7 +87,7 @@ impl SimWorld {
             road_network: SimRoadNetwork::new(),
             intersections: HashMap::new(),
             cars: HashMap::new(),
-            houses: HashMap::new(),
+            apartments: HashMap::new(),
             factories: HashMap::new(),
             shops: HashMap::new(),
             next_id: 0,
@@ -189,11 +189,11 @@ impl SimWorld {
         Ok((forward, backward))
     }
 
-    /// Add a house at an intersection
-    pub fn add_house(&mut self, intersection_id: IntersectionId) -> HouseId {
-        let id = HouseId(self.next_sim_id());
-        let house = SimHouse::new(id, intersection_id);
-        self.houses.insert(id, house);
+    /// Add an apartment at an intersection
+    pub fn add_apartment(&mut self, intersection_id: IntersectionId) -> ApartmentId {
+        let id = ApartmentId(self.next_sim_id());
+        let apartment = SimApartment::new(id, intersection_id);
+        self.apartments.insert(id, apartment);
         id
     }
 
@@ -213,13 +213,13 @@ impl SimWorld {
         id
     }
 
-    /// Add a house with game cost checking
-    /// Returns Some(house_id) if successful, None if insufficient funds
-    pub fn try_add_house(&mut self, intersection_id: IntersectionId) -> Option<HouseId> {
-        if !self.spend_for_game(COST_HOUSE) {
+    /// Add an apartment with game cost checking
+    /// Returns Some(apartment_id) if successful, None if insufficient funds
+    pub fn try_add_apartment(&mut self, intersection_id: IntersectionId) -> Option<ApartmentId> {
+        if !self.spend_for_game(COST_APARTMENT) {
             return None;
         }
-        Some(self.add_house(intersection_id))
+        Some(self.add_apartment(intersection_id))
     }
 
     /// Add a factory with game cost checking
@@ -268,11 +268,14 @@ impl SimWorld {
             .map(Some)
     }
 
-    /// Remove a house from the world
-    /// Returns the car that was associated with the house (if any)
-    pub fn remove_house(&mut self, house_id: HouseId) -> Option<CarId> {
-        let house = self.houses.remove(&house_id)?;
-        house.car
+    /// Remove an apartment from the world
+    /// Returns the cars that were associated with the apartment (if any)
+    pub fn remove_apartment(&mut self, apartment_id: ApartmentId) -> Vec<CarId> {
+        let apartment = match self.apartments.remove(&apartment_id) {
+            Some(a) => a,
+            None => return Vec::new(),
+        };
+        apartment.cars.into_iter().flatten().collect()
     }
 
     /// Remove a factory from the world
@@ -303,15 +306,15 @@ impl SimWorld {
     /// Buildings at the intersection will be removed
     pub fn remove_intersection(&mut self, intersection_id: IntersectionId) -> Result<()> {
         // Remove any buildings at this intersection
-        let houses_to_remove: Vec<HouseId> = self
-            .houses
+        let apartments_to_remove: Vec<ApartmentId> = self
+            .apartments
             .iter()
-            .filter(|(_, h)| h.intersection_id == intersection_id)
+            .filter(|(_, a)| a.intersection_id == intersection_id)
             .map(|(id, _)| *id)
             .collect();
 
-        for house_id in houses_to_remove {
-            self.remove_house(house_id);
+        for apartment_id in apartments_to_remove {
+            self.remove_apartment(apartment_id);
         }
 
         let factories_to_remove: Vec<FactoryId> = self
@@ -384,17 +387,20 @@ impl SimWorld {
         let car_info = self
             .cars
             .get(&car_id)
-            .map(|c| (c.origin_house, c.origin_factory));
+            .map(|c| (c.origin_apartment, c.origin_factory));
 
         self.cars.remove(&car_id);
         self.road_network.remove_car_from_tracking(car_id);
 
-        if let Some((origin_house, origin_factory)) = car_info {
-            // Clear house car reference
-            if let Some(house_id) = origin_house {
-                if let Some(house) = self.houses.get_mut(&house_id) {
-                    if house.car == Some(car_id) {
-                        house.car = None;
+        if let Some((origin_apartment, origin_factory)) = car_info {
+            // Clear apartment car reference
+            if let Some(apartment_id) = origin_apartment {
+                if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                    for car_slot in &mut apartment.cars {
+                        if *car_slot == Some(car_id) {
+                            *car_slot = None;
+                            break;
+                        }
                     }
                 }
             }
@@ -571,7 +577,7 @@ impl SimWorld {
         to_intersection: IntersectionId,
         vehicle_type: VehicleType,
         trip_type: TripType,
-        origin_house: Option<HouseId>,
+        origin_apartment: Option<ApartmentId>,
         origin_factory: Option<FactoryId>,
     ) -> Result<CarId> {
         // Find connected roads from the starting intersection
@@ -630,7 +636,7 @@ impl SimWorld {
             road_angle,
             vehicle_type,
             trip_type,
-            origin_house,
+            origin_apartment,
             origin_factory,
         );
 
@@ -700,11 +706,11 @@ impl SimWorld {
     }
 
     /// Update all factories
-    /// Returns (workers_done_house_ids, trucks_to_dispatch)
+    /// Returns (workers_done_apartment_ids, trucks_to_dispatch)
     fn update_factories(
         &mut self,
         delta_secs: f32,
-    ) -> (Vec<(FactoryId, HouseId)>, Vec<(FactoryId, IntersectionId)>) {
+    ) -> (Vec<(FactoryId, ApartmentId)>, Vec<(FactoryId, IntersectionId)>) {
         let mut workers_done = Vec::new();
         let mut trucks_to_dispatch = Vec::new();
 
@@ -721,12 +727,12 @@ impl SimWorld {
                 None => continue,
             };
 
-            // Update factory and get house_ids of workers who finished their shift
-            let finished_house_ids = factory.update(delta_secs);
+            // Update factory and get apartment_ids of workers who finished their shift
+            let finished_apartment_ids = factory.update(delta_secs);
 
-            // Record which houses have workers done
-            for house_id in finished_house_ids {
-                workers_done.push((factory_id, house_id));
+            // Record which apartments have workers done
+            for apartment_id in finished_apartment_ids {
+                workers_done.push((factory_id, apartment_id));
             }
 
             // If truck is available and there are deliveries ready and shops exist
@@ -747,7 +753,7 @@ impl SimWorld {
         (workers_done, trucks_to_dispatch)
     }
 
-    /// Spawn workers from houses to factories
+    /// Spawn workers from apartments to factories
     fn spawn_workers(&mut self) {
         // Get all factories that can accept workers (truck is home)
         let factories_accepting: Vec<(FactoryId, IntersectionId)> = self
@@ -761,20 +767,24 @@ impl SimWorld {
             return;
         }
 
-        // Collect house IDs to process
-        let house_ids: Vec<HouseId> = self.houses.keys().copied().collect();
-
-        for house_id in house_ids {
-            let house = match self.houses.get(&house_id) {
-                Some(h) => h,
-                None => continue,
-            };
-
-            // Only spawn if house doesn't have a car out
-            if house.car.is_some() {
-                continue;
+        // Collect apartments with available car slots (only spawn one car per apartment per tick)
+        let mut apartment_slots_to_spawn = Vec::new();
+        
+        for (apartment_id, apartment) in &self.apartments {
+            let apartment_intersection = apartment.intersection_id;
+            
+            // Find the first empty slot - only spawn ONE car per apartment per tick
+            for (slot_index, car_slot) in apartment.cars.iter().enumerate() {
+                // Only spawn if this slot doesn't have a car out
+                if car_slot.is_none() {
+                    apartment_slots_to_spawn.push((*apartment_id, slot_index, apartment_intersection));
+                    break; // Only spawn one car per apartment per tick
+                }
             }
+        }
 
+        // Now spawn one car per apartment (if they have an empty slot)
+        for (apartment_id, slot_index, apartment_intersection) in apartment_slots_to_spawn {
             // Choose random factory
             let (_factory_id, factory_intersection) = match self.choose_random(&factories_accepting)
             {
@@ -782,24 +792,18 @@ impl SimWorld {
                 None => continue,
             };
 
-            let house_intersection = self.houses.get(&house_id).map(|h| h.intersection_id);
-            let house_intersection = match house_intersection {
-                Some(hi) => hi,
-                None => continue,
-            };
-
             // Spawn car going to work
             match self.spawn_vehicle(
-                house_intersection,
+                apartment_intersection,
                 factory_intersection,
                 VehicleType::Car,
                 TripType::Outbound,
-                Some(house_id),
+                Some(apartment_id),
                 None,
             ) {
                 Ok(car_id) => {
-                    if let Some(house) = self.houses.get_mut(&house_id) {
-                        house.car = Some(car_id);
+                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                        apartment.cars[slot_index] = Some(car_id);
                     }
                 }
                 Err(_) => continue,
@@ -826,10 +830,10 @@ impl SimWorld {
         let (workers_done, trucks_to_dispatch) = self.update_factories(delta_secs);
 
         // Send workers home after their shift
-        for (factory_id, house_id) in workers_done {
-            // Get the house intersection
-            let house_intersection = match self.houses.get(&house_id) {
-                Some(h) => h.intersection_id,
+        for (factory_id, apartment_id) in workers_done {
+            // Get the apartment intersection
+            let apartment_intersection = match self.apartments.get(&apartment_id) {
+                Some(a) => a.intersection_id,
                 None => continue,
             };
 
@@ -840,14 +844,30 @@ impl SimWorld {
             };
 
             // Spawn car returning home
-            let _ = self.spawn_vehicle(
+            match self.spawn_vehicle(
                 factory_intersection,
-                house_intersection,
+                apartment_intersection,
                 VehicleType::Car,
                 TripType::Return,
-                Some(house_id),
+                Some(apartment_id),
                 Some(factory_id),
-            );
+            ) {
+                Ok(return_car_id) => {
+                    // Set apartment slot with the returning car's ID
+                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                        // Find first empty slot and assign the return car
+                        for car_slot in &mut apartment.cars {
+                            if car_slot.is_none() {
+                                *car_slot = Some(return_car_id);
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Failed to spawn return car - slot remains empty for next spawn attempt
+                }
+            }
         }
 
         // Dispatch trucks to make deliveries
@@ -880,7 +900,7 @@ impl SimWorld {
             }
         }
 
-        // Spawn workers from houses
+        // Spawn workers from apartments
         self.spawn_workers();
 
         // Update cars and process results
@@ -895,48 +915,82 @@ impl SimWorld {
                         (
                             c.vehicle_type,
                             c.trip_type,
-                            c.origin_house,
+                            c.origin_apartment,
                             c.origin_factory,
                         )
                     });
 
-                    if let Some((vehicle_type, trip_type, origin_house, origin_factory)) = car_info
+                    if let Some((vehicle_type, trip_type, origin_apartment, origin_factory)) = car_info
                     {
                         match (vehicle_type, trip_type) {
                             (VehicleType::Car, TripType::Outbound) => {
-                                // Worker arrived at factory - try to register them with their house_id
+                                // Worker arrived at factory - try to register them with their apartment_id
                                 let mut worker_accepted = false;
                                 let mut destination_factory: Option<FactoryId> = None;
-                                if let Some(house_id) = origin_house {
+                                if let Some(apartment_id) = origin_apartment {
                                     if let Some((factory_id, factory)) = self
                                         .factories
                                         .iter_mut()
                                         .find(|(_, f)| f.intersection_id == dest)
                                     {
-                                        worker_accepted = factory.receive_worker(house_id);
+                                        worker_accepted = factory.receive_worker(apartment_id);
                                         destination_factory = Some(*factory_id);
                                     }
                                 }
 
                                 if worker_accepted {
+                                    // Clear apartment slot since worker is at factory (will be set when return car spawns)
+                                    if let Some(apartment_id) = origin_apartment {
+                                        if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                            for car_slot in &mut apartment.cars {
+                                                if *car_slot == Some(car_id) {
+                                                    *car_slot = None;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
                                     // Remove car from tracking while at work (will respawn when returning home)
                                     self.road_network.remove_car_from_tracking(car_id);
                                     self.cars.remove(&car_id);
                                 } else {
                                     // Factory rejected worker (truck out or full), send them back home
-                                    if let Some(house_id) = origin_house {
-                                        let house_intersection =
-                                            self.houses.get(&house_id).map(|h| h.intersection_id);
-                                        if let Some(house_intersection) = house_intersection {
+                                    if let Some(apartment_id) = origin_apartment {
+                                        let apartment_intersection =
+                                            self.apartments.get(&apartment_id).map(|a| a.intersection_id);
+                                        if let Some(apartment_intersection) = apartment_intersection {
                                             // Spawn car returning home
-                                            let _ = self.spawn_vehicle(
+                                            match self.spawn_vehicle(
                                                 dest,
-                                                house_intersection,
+                                                apartment_intersection,
                                                 VehicleType::Car,
                                                 TripType::Return,
-                                                Some(house_id),
+                                                Some(apartment_id),
                                                 destination_factory,
-                                            );
+                                            ) {
+                                                Ok(new_car_id) => {
+                                                    // Update apartment slot with new car_id
+                                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                                        for car_slot in &mut apartment.cars {
+                                                            if *car_slot == Some(car_id) {
+                                                                *car_slot = Some(new_car_id);
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                Err(_) => {
+                                                    // Failed to spawn return car, just clear the slot
+                                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                                        for car_slot in &mut apartment.cars {
+                                                            if *car_slot == Some(car_id) {
+                                                                *car_slot = None;
+                                                                break;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     // Despawn the current car
@@ -945,14 +999,14 @@ impl SimWorld {
                                 }
                             }
                             (VehicleType::Car, TripType::Return) => {
-                                let commute_distance = match (origin_house, origin_factory) {
-                                    (Some(house_id), Some(factory_id)) => {
-                                        let house_position = self
-                                            .houses
-                                            .get(&house_id)
-                                            .and_then(|house| {
+                                let commute_distance = match (origin_apartment, origin_factory) {
+                                    (Some(apartment_id), Some(factory_id)) => {
+                                        let apartment_position = self
+                                            .apartments
+                                            .get(&apartment_id)
+                                            .and_then(|apartment| {
                                                 self.road_network.get_intersection_position(
-                                                    house.intersection_id,
+                                                    apartment.intersection_id,
                                                 )
                                             })
                                             .copied();
@@ -966,13 +1020,13 @@ impl SimWorld {
                                             })
                                             .copied();
 
-                                        match (house_position, factory_position) {
-                                            (Some(house_pos), Some(factory_pos)) => {
-                                                house_pos.distance(&factory_pos)
+                                        match (apartment_position, factory_position) {
+                                            (Some(apartment_pos), Some(factory_pos)) => {
+                                                apartment_pos.distance(&factory_pos)
                                             }
                                             _ => {
                                                 warn!(
-                                                    "Missing house or factory position for worker commute; defaulting to a zero-distance commute, which applies the maximum commute penalty"
+                                                    "Missing apartment or factory position for worker commute; defaulting to a zero-distance commute, which applies the maximum commute penalty"
                                                 );
                                                 0.0
                                             }
@@ -986,9 +1040,15 @@ impl SimWorld {
                                     }
                                 };
                                 // Worker returned home - clear car reference and despawn
-                                if let Some(house_id) = origin_house {
-                                    if let Some(house) = self.houses.get_mut(&house_id) {
-                                        house.car = None;
+                                if let Some(apartment_id) = origin_apartment {
+                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                        // Find and clear the car slot
+                                        for car_slot in &mut apartment.cars {
+                                            if *car_slot == Some(car_id) {
+                                                *car_slot = None;
+                                                break;
+                                            }
+                                        }
                                     }
                                 }
                                 // Track worker trip completion in game state
@@ -1061,9 +1121,15 @@ impl SimWorld {
                 CarUpdateResult::Despawn => {
                     // Clean up references for unexpectedly despawned vehicles
                     if let Some(car) = self.cars.get(&car_id) {
-                        if let Some(house_id) = car.origin_house {
-                            if let Some(house) = self.houses.get_mut(&house_id) {
-                                house.car = None;
+                        if let Some(apartment_id) = car.origin_apartment {
+                            if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
+                                // Find and clear the car slot
+                                for car_slot in &mut apartment.cars {
+                                    if *car_slot == Some(car_id) {
+                                        *car_slot = None;
+                                        break;
+                                    }
+                                }
                             }
                         }
                         if let Some(factory_id) = car.origin_factory {
@@ -1118,18 +1184,18 @@ impl SimWorld {
             }
         }
 
-        // Add houses (4 total) - offshoots from grid corners
-        let house_data = vec![
+        // Add apartments (4 total) - offshoots from grid corners
+        let apartment_data = vec![
             (grid[0][0], Position::new(-30.0, 0.0, -30.0)), // Top-left
             (grid[0][2], Position::new(30.0, 0.0, -30.0)),  // Top-right
             (grid[2][0], Position::new(-30.0, 0.0, 30.0)),  // Bottom-left
             (grid[2][2], Position::new(30.0, 0.0, 30.0)),   // Bottom-right
         ];
 
-        for (grid_intersection, house_pos) in house_data {
-            let house_intersection = world.add_intersection(house_pos);
-            let _ = world.add_two_way_road(grid_intersection, house_intersection);
-            world.add_house(house_intersection);
+        for (grid_intersection, apartment_pos) in apartment_data {
+            let apartment_intersection = world.add_intersection(apartment_pos);
+            let _ = world.add_two_way_road(grid_intersection, apartment_intersection);
+            world.add_apartment(apartment_intersection);
         }
 
         // Add factories (6 total) - offshoots from various grid points
@@ -1173,7 +1239,7 @@ impl SimWorld {
             self.road_network.road_count()
         );
         println!("Cars: {}", self.cars.len());
-        println!("Houses: {}", self.houses.len());
+        println!("Apartments: {}", self.apartments.len());
         println!("Factories: {}", self.factories.len());
         println!("Shops: {}", self.shops.len());
         println!();
@@ -1228,8 +1294,8 @@ impl SimWorld {
             demand.shops_waiting, demand.total_shops
         );
         println!(
-            "  Houses waiting: {}/{}",
-            demand.houses_waiting, demand.total_houses
+            "  Apartments waiting: {}/{}",
+            demand.apartments_waiting, demand.total_apartments
         );
     }
 
@@ -1238,11 +1304,11 @@ impl SimWorld {
     /// Returns metrics showing building busy states:
     /// - Factories waiting: factories that can't accept workers (truck is out)
     /// - Shops waiting: always 0 (shops are passive receivers)
-    /// - Houses waiting: houses with cars currently out (busy)
+    /// - Apartments waiting: apartments with cars currently out (busy)
     pub fn calculate_global_demand(&self) -> GlobalDemand {
         let total_factories = self.factories.len();
         let total_shops = self.shops.len();
-        let total_houses = self.houses.len();
+        let total_apartments = self.apartments.len();
 
         // Count factories that can accept workers (truck is home)
         let factories_accepting: usize = self
@@ -1251,8 +1317,8 @@ impl SimWorld {
             .filter(|f| f.can_accept_workers())
             .count();
 
-        // Count houses with cars out (busy)
-        let houses_busy: usize = self.houses.values().filter(|h| h.car.is_some()).count();
+        // Count apartments with cars out (busy) - any car slot that is Some
+        let apartments_busy: usize = self.apartments.values().filter(|a| a.cars.iter().any(|c| c.is_some())).count();
 
         // Simplified: factories waiting are those that can't accept workers (truck is out)
         let factories_waiting = total_factories - factories_accepting;
@@ -1260,16 +1326,16 @@ impl SimWorld {
         // Simplified: shops always wait if they exist (no demand threshold)
         let shops_waiting = 0; // Shops are passive - they just receive deliveries
 
-        // Houses waiting are those with cars out (busy)
-        let houses_waiting = houses_busy;
+        // Apartments waiting are those with cars out (busy)
+        let apartments_waiting = apartments_busy;
 
         GlobalDemand {
             factories_waiting,
             total_factories,
             shops_waiting,
             total_shops,
-            houses_waiting,
-            total_houses,
+            apartments_waiting,
+            total_apartments,
         }
     }
 
@@ -1364,12 +1430,12 @@ impl SimWorld {
             let (row, col) = to_grid(pos.x, pos.z);
 
             // Check what's at this intersection
-            let has_house = self.houses.values().any(|h| h.intersection_id == *id);
+            let has_apartment = self.apartments.values().any(|a| a.intersection_id == *id);
             let has_factory = self.factories.values().any(|f| f.intersection_id == *id);
             let has_shop = self.shops.values().any(|s| s.intersection_id == *id);
 
-            grid[row][col] = if has_house {
-                'H'
+            grid[row][col] = if has_apartment {
+                'A'
             } else if has_factory {
                 'F'
             } else if has_shop {
@@ -1389,7 +1455,7 @@ impl SimWorld {
 
         // Print the grid
         println!("\n=== World Map ===");
-        println!("Legend: H=House, F=Factory, S=Shop, +=Intersection, C=Car, ·=Road");
+        println!("Legend: A=Apartment, F=Factory, S=Shop, +=Intersection, C=Car, ·=Road");
         println!();
         for row in &grid {
             let line: String = row.iter().collect();
