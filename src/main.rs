@@ -618,4 +618,306 @@ mod tests {
 
         println!("FACTORY DELIVERY LOGIC TEST PASSED");
     }
+
+    /// Tests that traffic-aware pathfinding correctly factors in congestion
+    ///
+    /// This test creates a simple road network with two parallel routes and
+    /// verifies that pathfinding prefers the less congested route when traffic
+    /// is present.
+    #[test]
+    fn test_traffic_aware_pathfinding() {
+        use simulation::{Position, SimWorld};
+        use ordered_float::OrderedFloat;
+
+        println!("Testing traffic-aware pathfinding...");
+
+        // Create a simple world
+        let mut world = SimWorld::new_with_seed(42);
+
+        // Create a diamond-shaped road network:
+        //
+        //        B
+        //       / \
+        //      A   D
+        //       \ /
+        //        C
+        //
+        // Two routes from A to D: A -> B -> D (top) and A -> C -> D (bottom)
+        // Both routes have the same length
+
+        let a = world.add_intersection(Position::new(0.0, 0.0, 0.0));
+        let b = world.add_intersection(Position::new(5.0, 0.0, -5.0));
+        let c = world.add_intersection(Position::new(5.0, 0.0, 5.0));
+        let d = world.add_intersection(Position::new(10.0, 0.0, 0.0));
+
+        // Add roads (two-way)
+        let (road_ab, _) = world.add_two_way_road(a, b).unwrap();
+        let (road_bd, _) = world.add_two_way_road(b, d).unwrap();
+        let (road_ac, _) = world.add_two_way_road(a, c).unwrap();
+        let (road_cd, _) = world.add_two_way_road(c, d).unwrap();
+
+        // Initially, with no traffic, both routes should be equivalent
+        // The pathfinding will pick one (it may prefer one based on graph order)
+        let initial_path = world.road_network.find_path(a, d);
+        assert!(initial_path.is_some(), "Should find a path from A to D");
+        let initial_path = initial_path.unwrap();
+        println!(
+            "Initial path (no traffic): {:?}",
+            initial_path
+        );
+
+        // Now add traffic to the top route (A -> B -> D)
+        // Simulate 5 cars on road A -> B
+        let car_id = simulation::CarId(simulation::SimId(100));
+        world
+            .road_network
+            .update_car_road_position(
+                car_id,
+                road_ab,
+                OrderedFloat(1.0),
+                false,
+                None,
+                OrderedFloat(0.0),
+            )
+            .unwrap();
+
+        let car_id2 = simulation::CarId(simulation::SimId(101));
+        world
+            .road_network
+            .update_car_road_position(
+                car_id2,
+                road_ab,
+                OrderedFloat(2.0),
+                false,
+                None,
+                OrderedFloat(0.0),
+            )
+            .unwrap();
+
+        let car_id3 = simulation::CarId(simulation::SimId(102));
+        world
+            .road_network
+            .update_car_road_position(
+                car_id3,
+                road_ab,
+                OrderedFloat(3.0),
+                false,
+                None,
+                OrderedFloat(0.0),
+            )
+            .unwrap();
+
+        let car_id4 = simulation::CarId(simulation::SimId(103));
+        world
+            .road_network
+            .update_car_road_position(
+                car_id4,
+                road_bd,
+                OrderedFloat(1.0),
+                false,
+                None,
+                OrderedFloat(0.0),
+            )
+            .unwrap();
+
+        let car_id5 = simulation::CarId(simulation::SimId(104));
+        world
+            .road_network
+            .update_car_road_position(
+                car_id5,
+                road_bd,
+                OrderedFloat(2.0),
+                false,
+                None,
+                OrderedFloat(0.0),
+            )
+            .unwrap();
+
+        // Verify traffic is counted correctly
+        let count_ab = world.road_network.get_car_count_on_road(road_ab);
+        let count_bd = world.road_network.get_car_count_on_road(road_bd);
+        let count_ac = world.road_network.get_car_count_on_road(road_ac);
+        let count_cd = world.road_network.get_car_count_on_road(road_cd);
+
+        println!("Traffic counts:");
+        println!("  Road A -> B: {} cars", count_ab);
+        println!("  Road B -> D: {} cars", count_bd);
+        println!("  Road A -> C: {} cars", count_ac);
+        println!("  Road C -> D: {} cars", count_cd);
+
+        assert_eq!(count_ab, 3, "Road A->B should have 3 cars");
+        assert_eq!(count_bd, 2, "Road B->D should have 2 cars");
+        assert_eq!(count_ac, 0, "Road A->C should have 0 cars");
+        assert_eq!(count_cd, 0, "Road C->D should have 0 cars");
+
+        // Find path again - should prefer the bottom route (A -> C -> D) due to traffic
+        let traffic_path = world.road_network.find_path(a, d);
+        assert!(traffic_path.is_some(), "Should still find a path from A to D");
+        let traffic_path = traffic_path.unwrap();
+        println!("Path with traffic on top route: {:?}", traffic_path);
+
+        // The path should now prefer the bottom route (going through C)
+        assert!(
+            traffic_path.contains(&c),
+            "Path should prefer the less congested route through C, got: {:?}",
+            traffic_path
+        );
+
+        println!("TRAFFIC-AWARE PATHFINDING TEST PASSED");
+    }
+
+    /// Tests that traffic weight calculation works correctly
+    #[test]
+    fn test_traffic_weight_calculation() {
+        use simulation::{Position, SimWorld};
+        use ordered_float::OrderedFloat;
+
+        println!("Testing traffic weight calculation...");
+
+        let mut world = SimWorld::new_with_seed(42);
+
+        // Create a simple road
+        let a = world.add_intersection(Position::new(0.0, 0.0, 0.0));
+        let b = world.add_intersection(Position::new(10.0, 0.0, 0.0));
+        let (road_id, _) = world.add_two_way_road(a, b).unwrap();
+
+        // Get base weight (road length * 100 = 10.0 * 100 = 1000)
+        let base_weight = 1000u32; // 10.0 road length * 100
+
+        // No traffic: weight should equal base weight
+        let weight_no_traffic = world.road_network.calculate_traffic_weight(road_id, base_weight);
+        assert_eq!(
+            weight_no_traffic, base_weight,
+            "With no traffic, weight should equal base weight"
+        );
+
+        // Add 1 car: weight should be base * (1 + 0.2) = base * 1.2
+        let car_id = simulation::CarId(simulation::SimId(100));
+        world
+            .road_network
+            .update_car_road_position(
+                car_id,
+                road_id,
+                OrderedFloat(1.0),
+                false,
+                None,
+                OrderedFloat(0.0),
+            )
+            .unwrap();
+
+        let weight_1_car = world.road_network.calculate_traffic_weight(road_id, base_weight);
+        let expected_weight_1 = (base_weight as f32 * 1.2) as u32;
+        assert_eq!(
+            weight_1_car, expected_weight_1,
+            "With 1 car, weight should be {} (got {})",
+            expected_weight_1, weight_1_car
+        );
+
+        // Add 4 more cars (total 5): weight should be base * (1 + 5*0.2) = base * 2.0
+        for i in 1..5 {
+            let car = simulation::CarId(simulation::SimId(100 + i));
+            world
+                .road_network
+                .update_car_road_position(
+                    car,
+                    road_id,
+                    OrderedFloat(i as f32 + 1.0),
+                    false,
+                    None,
+                    OrderedFloat(0.0),
+                )
+                .unwrap();
+        }
+
+        let weight_5_cars = world.road_network.calculate_traffic_weight(road_id, base_weight);
+        let expected_weight_5 = (base_weight as f32 * 2.0) as u32;
+        assert_eq!(
+            weight_5_cars, expected_weight_5,
+            "With 5 cars, weight should be {} (got {})",
+            expected_weight_5, weight_5_cars
+        );
+
+        // Add many more cars to test the max multiplier cap (should cap at 3.0)
+        for i in 5..20 {
+            let car = simulation::CarId(simulation::SimId(100 + i));
+            world
+                .road_network
+                .update_car_road_position(
+                    car,
+                    road_id,
+                    OrderedFloat(i as f32 + 1.0),
+                    false,
+                    None,
+                    OrderedFloat(0.0),
+                )
+                .unwrap();
+        }
+
+        let weight_many_cars = world.road_network.calculate_traffic_weight(road_id, base_weight);
+        let expected_max_weight = (base_weight as f32 * 3.0) as u32;
+        assert_eq!(
+            weight_many_cars, expected_max_weight,
+            "With many cars, weight should cap at {} (got {})",
+            expected_max_weight, weight_many_cars
+        );
+
+        println!("Car count on road: {}", world.road_network.get_car_count_on_road(road_id));
+        println!("Weight with 0 cars: {}", base_weight);
+        println!("Weight with 1 car: {}", expected_weight_1);
+        println!("Weight with 5 cars: {}", expected_weight_5);
+        println!("Weight with many cars (capped): {}", expected_max_weight);
+
+        println!("TRAFFIC WEIGHT CALCULATION TEST PASSED");
+    }
+
+    /// Tests traffic density calculation
+    #[test]
+    fn test_traffic_density() {
+        use simulation::{Position, SimWorld};
+        use ordered_float::OrderedFloat;
+
+        println!("Testing traffic density calculation...");
+
+        let mut world = SimWorld::new_with_seed(42);
+
+        // Create a 10-unit long road
+        let a = world.add_intersection(Position::new(0.0, 0.0, 0.0));
+        let b = world.add_intersection(Position::new(10.0, 0.0, 0.0));
+        let (road_id, _) = world.add_two_way_road(a, b).unwrap();
+
+        // No traffic: density should be 0
+        let density_no_traffic = world.road_network.calculate_traffic_density(road_id);
+        assert!(
+            density_no_traffic.abs() < f32::EPSILON,
+            "Density with no traffic should be 0"
+        );
+
+        // Add 5 cars on a 10-unit road: density = 5/10 = 0.5
+        for i in 0..5 {
+            let car = simulation::CarId(simulation::SimId(100 + i));
+            world
+                .road_network
+                .update_car_road_position(
+                    car,
+                    road_id,
+                    OrderedFloat(i as f32 * 2.0),
+                    false,
+                    None,
+                    OrderedFloat(0.0),
+                )
+                .unwrap();
+        }
+
+        let density_5_cars = world.road_network.calculate_traffic_density(road_id);
+        assert!(
+            (density_5_cars - 0.5).abs() < 0.01,
+            "Density with 5 cars on 10-unit road should be ~0.5, got {}",
+            density_5_cars
+        );
+
+        println!("Density with 0 cars: {}", density_no_traffic);
+        println!("Density with 5 cars on 10-unit road: {}", density_5_cars);
+
+        println!("TRAFFIC DENSITY TEST PASSED");
+    }
 }
