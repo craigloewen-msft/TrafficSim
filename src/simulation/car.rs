@@ -40,6 +40,8 @@ pub struct SimCar {
     pub origin_apartment: Option<ApartmentId>,
     /// The factory this truck belongs to (for trucks)
     pub origin_factory: Option<FactoryId>,
+    /// Time spent waiting (not moving) - used for stuck detection
+    pub wait_time: f32,
 }
 
 impl SimCar {
@@ -70,6 +72,7 @@ impl SimCar {
             trip_type,
             origin_apartment,
             origin_factory,
+            wait_time: 0.0,
         }
     }
 
@@ -149,6 +152,13 @@ impl SimCar {
             {
                 distance_delta = 0.0;
             }
+        }
+
+        // Track wait time for stuck detection
+        if distance_delta == 0.0 {
+            self.wait_time += delta_secs;
+        } else {
+            self.wait_time = 0.0;
         }
 
         self.distance_along_road += distance_delta;

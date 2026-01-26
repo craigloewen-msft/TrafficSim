@@ -4604,6 +4604,8 @@ dependencies = [
  "ordered-float 5.1.0",
  "petgraph",
  "rand",
+ "serde",
+ "serde_json",
  "sorted-vec",
 ]
 

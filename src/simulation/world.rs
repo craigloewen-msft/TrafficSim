@@ -8,6 +8,7 @@ use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use super::building::{SimApartment, SimFactory, SimShop};
 use super::car::{CarUpdateResult, SimCar};
@@ -15,6 +16,7 @@ use super::car_manager;
 use super::game_state::{GameState, COST_APARTMENT, COST_FACTORY, COST_ROAD, COST_SHOP};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
+use super::stuck_detector;
 use super::trip_orchestrator::{self, CarInfo, WorkerArrivalResult};
 use super::types::{
     ApartmentId, CarId, FactoryId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
@@ -80,6 +82,9 @@ pub struct SimWorld {
 
     /// Game state tracking (optional - only used when playing as a game)
     pub game_state: Option<GameState>,
+
+    /// Directory for stuck car dump output files
+    pub stuck_dump_dir: PathBuf,
 }
 
 impl Default for SimWorld {
@@ -101,6 +106,7 @@ impl SimWorld {
             time: 0.0,
             rng,
             game_state,
+            stuck_dump_dir: PathBuf::from("stuck_dumps"),
         }
     }
 
@@ -802,6 +808,41 @@ impl SimWorld {
                 }
                 CarUpdateResult::Continue => {}
             }
+        }
+
+        // Check for stuck cars and despawn them
+        self.process_stuck_cars();
+    }
+
+    /// Process stuck cars - generate dumps and despawn for recovery
+    fn process_stuck_cars(&mut self) {
+        let stuck_car_ids = stuck_detector::process_stuck_cars(
+            self.time,
+            &self.cars,
+            &self.intersections,
+            &self.road_network,
+            &self.apartments,
+            &self.factories,
+            &self.shops,
+            &self.stuck_dump_dir,
+        );
+
+        // Despawn each stuck car
+        for car_id in stuck_car_ids {
+            // Get car info for cleanup
+            let car_info = self.cars.get(&car_id).map(CarInfo::from_car);
+            if let Some(info) = car_info {
+                trip_orchestrator::handle_vehicle_despawn(
+                    car_id,
+                    info.origin_apartment,
+                    info.origin_factory,
+                    info.vehicle_type,
+                    &mut self.apartments,
+                    &mut self.factories,
+                );
+            }
+            self.road_network.remove_car_from_tracking(car_id);
+            self.cars.remove(&car_id);
         }
     }
 
