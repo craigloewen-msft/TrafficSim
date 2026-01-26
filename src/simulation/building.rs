@@ -22,6 +22,35 @@ impl SimApartment {
             cars: vec![None; 10],
         }
     }
+
+    /// Clear a car slot by car ID
+    /// Returns true if a slot was cleared
+    pub fn clear_car_slot(&mut self, car_id: CarId) -> bool {
+        for car_slot in &mut self.cars {
+            if *car_slot == Some(car_id) {
+                *car_slot = None;
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Set a specific car slot to a car ID
+    pub fn set_car_slot(&mut self, slot_index: usize, car_id: CarId) {
+        if slot_index < self.cars.len() {
+            self.cars[slot_index] = Some(car_id);
+        }
+    }
+
+    /// Find the slot index containing a specific car ID
+    pub fn find_car_slot(&self, car_id: CarId) -> Option<usize> {
+        self.cars.iter().position(|slot| *slot == Some(car_id))
+    }
+
+    /// Find the first empty slot index
+    pub fn find_empty_slot(&self) -> Option<usize> {
+        self.cars.iter().position(|slot| slot.is_none())
+    }
 }
 
 /// A factory in the simulation

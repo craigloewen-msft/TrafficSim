@@ -4,9 +4,7 @@
 //! without any Bevy dependencies.
 
 use anyhow::{Context, Result};
-use log::warn;
 use rand::rngs::StdRng;
-use rand::seq::IndexedRandom;
 use rand::Rng;
 use rand::SeedableRng;
 use std::collections::HashMap;
@@ -17,6 +15,7 @@ use super::car_manager;
 use super::game_state::{GameState, COST_APARTMENT, COST_FACTORY, COST_ROAD, COST_SHOP};
 use super::intersection::SimIntersection;
 use super::road_network::SimRoadNetwork;
+use super::trip_orchestrator::{self, CarInfo, WorkerArrivalResult};
 use super::types::{
     ApartmentId, CarId, FactoryId, IntersectionId, Position, RoadId, ShopId, SimId, SimRoad,
     TripType, VehicleType,
@@ -124,17 +123,6 @@ impl SimWorld {
         match &mut self.rng {
             Some(rng) => rng.random_range(range),
             None => rand::rng().random_range(range),
-        }
-    }
-
-    /// Choose a random element from a slice, using seeded RNG if available
-    fn choose_random<'a, T>(&mut self, slice: &'a [T]) -> Option<&'a T> {
-        if slice.is_empty() {
-            return None;
-        }
-        match &mut self.rng {
-            Some(rng) => slice.choose(rng),
-            None => slice.choose(&mut rand::rng()),
         }
     }
 
@@ -631,55 +619,44 @@ impl SimWorld {
 
     /// Spawn workers from apartments to factories
     fn spawn_workers(&mut self) {
-        // Get all factories that can accept workers (truck is home)
-        let factories_accepting: Vec<(FactoryId, IntersectionId)> = self
-            .factories
-            .values()
-            .filter(|f| f.can_accept_workers())
-            .map(|f| (f.id, f.intersection_id))
-            .collect();
+        // Use trip_orchestrator to determine which workers should spawn
+        let spawn_requests = {
+            // Create a closure that uses our RNG
+            let rng = &mut self.rng;
+            trip_orchestrator::determine_workers_to_spawn(
+                &self.apartments,
+                &self.factories,
+                |factories_accepting| {
+                    if factories_accepting.is_empty() {
+                        return None;
+                    }
+                    match rng {
+                        Some(r) => {
+                            use rand::seq::IndexedRandom;
+                            factories_accepting.choose(r).copied()
+                        }
+                        None => {
+                            use rand::seq::IndexedRandom;
+                            factories_accepting.choose(&mut rand::rng()).copied()
+                        }
+                    }
+                },
+            )
+        };
 
-        if factories_accepting.is_empty() {
-            return;
-        }
-
-        // Collect apartments with available car slots (only spawn one car per apartment per tick)
-        let mut apartment_slots_to_spawn = Vec::new();
-        
-        for (apartment_id, apartment) in &self.apartments {
-            let apartment_intersection = apartment.intersection_id;
-            
-            // Find the first empty slot - only spawn ONE car per apartment per tick
-            for (slot_index, car_slot) in apartment.cars.iter().enumerate() {
-                // Only spawn if this slot doesn't have a car out
-                if car_slot.is_none() {
-                    apartment_slots_to_spawn.push((*apartment_id, slot_index, apartment_intersection));
-                    break; // Only spawn one car per apartment per tick
-                }
-            }
-        }
-
-        // Now spawn one car per apartment (if they have an empty slot)
-        for (apartment_id, slot_index, apartment_intersection) in apartment_slots_to_spawn {
-            // Choose random factory
-            let (_factory_id, factory_intersection) = match self.choose_random(&factories_accepting)
-            {
-                Some(&(fid, fi)) => (fid, fi),
-                None => continue,
-            };
-
-            // Spawn car going to work
+        // Execute the spawn requests
+        for request in spawn_requests {
             match self.spawn_vehicle(
-                apartment_intersection,
-                factory_intersection,
+                request.apartment_intersection,
+                request.factory_intersection,
                 VehicleType::Car,
                 TripType::Outbound,
-                Some(apartment_id),
+                Some(request.apartment_id),
                 None,
             ) {
                 Ok(car_id) => {
-                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                        apartment.cars[slot_index] = Some(car_id);
+                    if let Some(apartment) = self.apartments.get_mut(&request.apartment_id) {
+                        apartment.set_car_slot(request.slot_index, car_id);
                     }
                 }
                 Err(_) => continue,
@@ -705,43 +682,28 @@ impl SimWorld {
         // Update factories - get workers done and trucks to dispatch
         let (workers_done, trucks_to_dispatch) = self.update_factories(delta_secs);
 
-        // Send workers home after their shift
-        for (factory_id, apartment_id) in workers_done {
-            // Get the apartment intersection
-            let apartment_intersection = match self.apartments.get(&apartment_id) {
-                Some(a) => a.intersection_id,
-                None => continue,
-            };
+        // Send workers home after their shift using trip_orchestrator
+        let return_requests = trip_orchestrator::process_workers_done(
+            &workers_done,
+            &self.factories,
+            &self.apartments,
+        );
 
-            // Get the factory intersection
-            let factory_intersection = match self.factories.get(&factory_id) {
-                Some(f) => f.intersection_id,
-                None => continue,
-            };
-
+        for request in return_requests {
             // Spawn car returning home
-            match self.spawn_vehicle(
-                factory_intersection,
-                apartment_intersection,
+            if let Ok(return_car_id) = self.spawn_vehicle(
+                request.factory_intersection,
+                request.apartment_intersection,
                 VehicleType::Car,
                 TripType::Return,
-                Some(apartment_id),
-                Some(factory_id),
+                Some(request.apartment_id),
+                Some(request.factory_id),
             ) {
-                Ok(return_car_id) => {
-                    // Set apartment slot with the returning car's ID
-                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                        // Find first empty slot and assign the return car
-                        for car_slot in &mut apartment.cars {
-                            if car_slot.is_none() {
-                                *car_slot = Some(return_car_id);
-                                break;
-                            }
-                        }
+                // Set apartment slot with the returning car's ID
+                if let Some(apartment) = self.apartments.get_mut(&request.apartment_id) {
+                    if let Some(slot) = apartment.find_empty_slot() {
+                        apartment.set_car_slot(slot, return_car_id);
                     }
-                }
-                Err(_) => {
-                    // Failed to spawn return car - slot remains empty for next spawn attempt
                 }
             }
         }
@@ -787,207 +749,35 @@ impl SimWorld {
             match result {
                 CarUpdateResult::ArrivedAtDestination(dest) => {
                     // Get car info before processing
-                    let car_info = self.cars.get(&car_id).map(|c| {
-                        (
-                            c.vehicle_type,
-                            c.trip_type,
-                            c.origin_apartment,
-                            c.origin_factory,
-                        )
-                    });
+                    let car_info = self.cars.get(&car_id).map(CarInfo::from_car);
 
-                    if let Some((vehicle_type, trip_type, origin_apartment, origin_factory)) = car_info
-                    {
-                        match (vehicle_type, trip_type) {
+                    if let Some(info) = car_info {
+                        match (info.vehicle_type, info.trip_type) {
                             (VehicleType::Car, TripType::Outbound) => {
-                                // Worker arrived at factory - try to register them with their apartment_id
-                                let mut worker_accepted = false;
-                                let mut destination_factory: Option<FactoryId> = None;
-                                if let Some(apartment_id) = origin_apartment {
-                                    if let Some((factory_id, factory)) = self
-                                        .factories
-                                        .iter_mut()
-                                        .find(|(_, f)| f.intersection_id == dest)
-                                    {
-                                        worker_accepted = factory.receive_worker(apartment_id);
-                                        destination_factory = Some(*factory_id);
-                                    }
-                                }
-
-                                if worker_accepted {
-                                    // Clear apartment slot since worker is at factory (will be set when return car spawns)
-                                    if let Some(apartment_id) = origin_apartment {
-                                        if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                                            for car_slot in &mut apartment.cars {
-                                                if *car_slot == Some(car_id) {
-                                                    *car_slot = None;
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // Remove car from tracking while at work (will respawn when returning home)
-                                    self.road_network.remove_car_from_tracking(car_id);
-                                    self.cars.remove(&car_id);
-                                } else {
-                                    // Factory rejected worker (truck out or full), send them back home
-                                    if let Some(apartment_id) = origin_apartment {
-                                        let apartment_intersection =
-                                            self.apartments.get(&apartment_id).map(|a| a.intersection_id);
-                                        if let Some(apartment_intersection) = apartment_intersection {
-                                            // Spawn car returning home
-                                            match self.spawn_vehicle(
-                                                dest,
-                                                apartment_intersection,
-                                                VehicleType::Car,
-                                                TripType::Return,
-                                                Some(apartment_id),
-                                                destination_factory,
-                                            ) {
-                                                Ok(new_car_id) => {
-                                                    // Update apartment slot with new car_id
-                                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                                                        for car_slot in &mut apartment.cars {
-                                                            if *car_slot == Some(car_id) {
-                                                                *car_slot = Some(new_car_id);
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                                Err(_) => {
-                                                    // Failed to spawn return car, just clear the slot
-                                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                                                        for car_slot in &mut apartment.cars {
-                                                            if *car_slot == Some(car_id) {
-                                                                *car_slot = None;
-                                                                break;
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    // Despawn the current car
-                                    self.road_network.remove_car_from_tracking(car_id);
-                                    self.cars.remove(&car_id);
-                                }
+                                self.handle_worker_arrival(car_id, dest, info.origin_apartment);
                             }
                             (VehicleType::Car, TripType::Return) => {
-                                let commute_distance = match (origin_apartment, origin_factory) {
-                                    (Some(apartment_id), Some(factory_id)) => {
-                                        let apartment_position = self
-                                            .apartments
-                                            .get(&apartment_id)
-                                            .and_then(|apartment| {
-                                                self.road_network.get_intersection_position(
-                                                    apartment.intersection_id,
-                                                )
-                                            })
-                                            .copied();
-                                        let factory_position = self
-                                            .factories
-                                            .get(&factory_id)
-                                            .and_then(|factory| {
-                                                self.road_network.get_intersection_position(
-                                                    factory.intersection_id,
-                                                )
-                                            })
-                                            .copied();
-
-                                        match (apartment_position, factory_position) {
-                                            (Some(apartment_pos), Some(factory_pos)) => {
-                                                apartment_pos.distance(&factory_pos)
-                                            }
-                                            _ => {
-                                                warn!(
-                                                    "Missing apartment or factory position for worker commute; defaulting to a zero-distance commute, which applies the maximum commute penalty"
-                                                );
-                                                0.0
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        warn!(
-                                            "Missing worker identifiers for commute penalty; defaulting to a zero-distance commute, which applies the maximum commute penalty"
-                                        );
-                                        0.0
-                                    }
-                                };
-                                // Worker returned home - clear car reference and despawn
-                                if let Some(apartment_id) = origin_apartment {
-                                    if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                                        // Find and clear the car slot
-                                        for car_slot in &mut apartment.cars {
-                                            if *car_slot == Some(car_id) {
-                                                *car_slot = None;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                }
-                                // Track worker trip completion in game state
-                                if let Some(game_state) = &mut self.game_state {
-                                    game_state.complete_worker_trip(commute_distance);
-                                }
+                                trip_orchestrator::handle_worker_return_home(
+                                    car_id,
+                                    info.origin_apartment,
+                                    info.origin_factory,
+                                    &mut self.apartments,
+                                    &self.factories,
+                                    &self.road_network,
+                                    &mut self.game_state,
+                                );
                                 self.road_network.remove_car_from_tracking(car_id);
                                 self.cars.remove(&car_id);
                             }
                             (VehicleType::Truck, TripType::Outbound) => {
-                                // Truck delivered to shop
-                                if let Some(shop) =
-                                    self.shops.values_mut().find(|s| s.intersection_id == dest)
-                                {
-                                    shop.receive_delivery();
-                                }
-                                // Now spawn truck returning to factory
-                                if let Some(factory_id) = origin_factory {
-                                    let factory_intersection =
-                                        self.factories.get(&factory_id).map(|f| f.intersection_id);
-                                    if let Some(factory_intersection) = factory_intersection {
-                                        // Spawn truck returning
-                                        match self.spawn_vehicle(
-                                            dest,
-                                            factory_intersection,
-                                            VehicleType::Truck,
-                                            TripType::Return,
-                                            None,
-                                            Some(factory_id),
-                                        ) {
-                                            Ok(new_truck_id) => {
-                                                if let Some(factory) =
-                                                    self.factories.get_mut(&factory_id)
-                                                {
-                                                    factory.truck = Some(new_truck_id);
-                                                }
-                                            }
-                                            Err(_) => {
-                                                // Truck can't return, just clear reference
-                                                if let Some(factory) =
-                                                    self.factories.get_mut(&factory_id)
-                                                {
-                                                    factory.truck = None;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                // Despawn old truck entity
-                                self.road_network.remove_car_from_tracking(car_id);
-                                self.cars.remove(&car_id);
+                                self.handle_truck_delivery(car_id, dest, info.origin_factory);
                             }
                             (VehicleType::Truck, TripType::Return) => {
-                                // Truck returned to factory - clear reference and despawn
-                                if let Some(factory_id) = origin_factory {
-                                    if let Some(factory) = self.factories.get_mut(&factory_id) {
-                                        factory.truck = None;
-                                    }
-                                }
-                                // Track shop delivery completion in game state
-                                if let Some(game_state) = &mut self.game_state {
-                                    game_state.complete_shop_delivery();
-                                }
+                                trip_orchestrator::handle_truck_return(
+                                    info.origin_factory,
+                                    &mut self.factories,
+                                    &mut self.game_state,
+                                );
                                 self.road_network.remove_car_from_tracking(car_id);
                                 self.cars.remove(&car_id);
                             }
@@ -995,24 +785,17 @@ impl SimWorld {
                     }
                 }
                 CarUpdateResult::Despawn => {
-                    // Clean up references for unexpectedly despawned vehicles
-                    if let Some(car) = self.cars.get(&car_id) {
-                        if let Some(apartment_id) = car.origin_apartment {
-                            if let Some(apartment) = self.apartments.get_mut(&apartment_id) {
-                                // Find and clear the car slot
-                                for car_slot in &mut apartment.cars {
-                                    if *car_slot == Some(car_id) {
-                                        *car_slot = None;
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                        if let Some(factory_id) = car.origin_factory {
-                            if let Some(factory) = self.factories.get_mut(&factory_id) {
-                                factory.truck = None;
-                            }
-                        }
+                    // Get car info for cleanup
+                    let car_info = self.cars.get(&car_id).map(CarInfo::from_car);
+                    if let Some(info) = car_info {
+                        trip_orchestrator::handle_vehicle_despawn(
+                            car_id,
+                            info.origin_apartment,
+                            info.origin_factory,
+                            info.vehicle_type,
+                            &mut self.apartments,
+                            &mut self.factories,
+                        );
                     }
                     self.road_network.remove_car_from_tracking(car_id);
                     self.cars.remove(&car_id);
@@ -1020,6 +803,98 @@ impl SimWorld {
                 CarUpdateResult::Continue => {}
             }
         }
+    }
+
+    /// Handle a worker car arriving at a factory
+    fn handle_worker_arrival(
+        &mut self,
+        car_id: CarId,
+        destination: IntersectionId,
+        origin_apartment: Option<ApartmentId>,
+    ) {
+        let (result, accepted) = trip_orchestrator::handle_worker_arrival_at_factory(
+            car_id,
+            destination,
+            origin_apartment,
+            &mut self.factories,
+            &mut self.apartments,
+        );
+
+        if accepted {
+            // Worker accepted - remove car from tracking
+            self.road_network.remove_car_from_tracking(car_id);
+            self.cars.remove(&car_id);
+        } else {
+            // Worker rejected - spawn return car
+            if let WorkerArrivalResult::Rejected {
+                destination_factory,
+                apartment_intersection,
+            } = result
+            {
+                if let Some(apartment_id) = origin_apartment {
+                    let new_car_id = self
+                        .spawn_vehicle(
+                            destination,
+                            apartment_intersection,
+                            VehicleType::Car,
+                            TripType::Return,
+                            Some(apartment_id),
+                            destination_factory,
+                        )
+                        .ok();
+
+                    trip_orchestrator::handle_worker_return_spawn_result(
+                        car_id,
+                        new_car_id,
+                        apartment_id,
+                        &mut self.apartments,
+                    );
+                }
+            }
+            // Remove old car
+            self.road_network.remove_car_from_tracking(car_id);
+            self.cars.remove(&car_id);
+        }
+    }
+
+    /// Handle a truck delivering to a shop
+    fn handle_truck_delivery(
+        &mut self,
+        car_id: CarId,
+        destination: IntersectionId,
+        origin_factory: Option<FactoryId>,
+    ) {
+        // Process delivery and get factory intersection for return trip
+        let factory_intersection = trip_orchestrator::handle_truck_delivery(
+            destination,
+            origin_factory,
+            &mut self.shops,
+            &self.factories,
+        );
+
+        // Spawn return truck if possible
+        if let (Some(factory_id), Some(factory_int)) = (origin_factory, factory_intersection) {
+            let new_truck_id = self
+                .spawn_vehicle(
+                    destination,
+                    factory_int,
+                    VehicleType::Truck,
+                    TripType::Return,
+                    None,
+                    Some(factory_id),
+                )
+                .ok();
+
+            trip_orchestrator::handle_truck_return_spawn_result(
+                factory_id,
+                new_truck_id,
+                &mut self.factories,
+            );
+        }
+
+        // Remove old truck
+        self.road_network.remove_car_from_tracking(car_id);
+        self.cars.remove(&car_id);
     }
 
     /// Create a default test world with some roads and buildings

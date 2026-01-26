@@ -11,6 +11,7 @@ mod factory;
 mod game_state;
 mod intersection;
 mod road_network;
+mod trip_orchestrator;
 mod types;
 mod world;
 
